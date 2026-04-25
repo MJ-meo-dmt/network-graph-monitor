@@ -93,6 +93,7 @@ This file is ignored by Git because it is large and can be downloaded separately
 ## Running
 
 ### From the project root:
+`Run terminal as Administrator`
 ```bash
 python backend/server.py
 ```
@@ -143,3 +144,7 @@ The goal is not to *replace* Wireshark, but to provide a quick visual overview o
 ## License
 
 This project is licensed under the MIT License.
+
+## Preview
+
+![Preview](docs/screenshot.png)
