@@ -56,3 +56,8 @@ desktop.ini
 .env
 .env.*
 config.local.json
+
+# Layout files
+frontend/layouts
+layouts/
+*_layout.json
