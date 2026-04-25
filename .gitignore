@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Build / packaging
+build/
+dist/
+*.spec.bak
+*.manifest
+*.log
+
+# PyInstaller
+*.toc
+*.pkg
+
+# App runtime/session data
+backend/sessions/
+sessions/
+*.session
+session_state_*.json
+current_session.txt
+*.tmp
+
+# Packet captures / exports
+*.pcap
+*.pcapng
+*.cap
+
+# Local data files
+backend/oui.csv
+oui.csv
+
+# IDE/editor
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Env/config secrets
+.env
+.env.*
+config.local.json

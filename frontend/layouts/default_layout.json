@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "exported_at": "2026-04-25T22:15:21.558Z",
+  "layout": {
+    "control-panel": {
+      "left": "0px",
+      "top": "3px",
+      "right": "auto",
+      "width": "305px",
+      "height": "229px"
+    },
+    "filter-panel": {
+      "left": "1480px",
+      "top": "5px",
+      "right": "auto",
+      "width": "220px",
+      "height": "510px"
+    },
+    "main-panel": {
+      "left": "1px",
+      "top": "234px",
+      "right": "auto",
+      "width": "317px",
+      "height": "689px"
+    },
+    "stats-panel": {
+      "left": "1700px",
+      "top": "6px",
+      "right": "auto",
+      "width": "219px",
+      "height": "508px"
+    },
+    "events-panel": {
+      "left": "1479px",
+      "top": "517px",
+      "right": "auto",
+      "width": "438px",
+      "height": "404px"
+    }
+  },
+  "camera": {
+    "x": 743.8410924044774,
+    "y": 455.80001594413926,
+    "zoom": 0.42386464032974025
+  },
+  "pinnedNodePositions": {
+    "__external_anchor__": {
+      "x": 1719.7983356954812,
+      "y": -365.79294597498455
+    },
+    "__local_anchor__": {
+      "x": -665.0699117379667,
+      "y": 485.022730650003
+    },
+    "__multicast_anchor__": {
+      "x": -380.7492829000322,
+      "y": 1142.6603491202209
+    }
+  }
+}

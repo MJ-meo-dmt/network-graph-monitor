@@ -1,0 +1,2553 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Network Map</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: rgba(15, 23, 42, 0.78);
+    --panel-2: #0f172a;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --border: rgba(148, 163, 184, 0.16);
+    --accent: #60a5fa;
+    --danger: #f43f5e;
+    --shadow: 0 8px 28px rgba(0,0,0,0.34);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.proto-arp { color: #fbbf24; }
+.proto-dns { color: #34d399; }
+.proto-quic { color: #2dd4bf; }
+.proto-tcp { color: #60a5fa; }
+.proto-udp { color: #a78bfa; }
+.proto-icmp { color: #f87171; }
+.proto-http { color: #f97316; }
+.proto-tls { color: #22c55e; }
+.proto-scan { color: #f43f5e; }
+.proto-unknown { color: #94a3b8; }
+
+body {
+    background:
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.06), transparent 28%),
+        radial-gradient(circle at top right, rgba(167, 139, 250, 0.05), transparent 24%),
+        radial-gradient(circle at center, #0b0f19, #05070d);
+    margin: 0;
+    color: var(--text);
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+}
+
+#canvas {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: grab;
+}
+
+#canvas:active {
+    cursor: grabbing;
+}
+
+.panel {
+    position: absolute;
+    width: 320px;
+    min-width: 180px;
+    min-height: 130px;
+    max-height: 90vh;
+
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+
+    border: 1px solid var(--border);
+    border-radius: 12px;
+
+    padding: 14px;
+    font-size: 13px;
+
+    box-shadow: var(--shadow);
+
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    z-index: 10;
+}
+
+#control-panel {
+    top: 12px;
+    left: 12px;
+    width: 760px;
+    height: 96px;
+    min-width: 320px;
+    min-height: 90px;
+    max-height: 250px;
+}
+
+#control-panel .panel-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    overflow: hidden;
+    padding-right: 0;
+}
+
+#control-panel .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+#control-panel button {
+    width: auto;
+    margin-top: 0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+#control-panel select {
+    min-width: 180px;
+    max-width: 260px;
+    height: 26px;
+    font-size: 12px;
+}
+
+#control-panel #capture-status,
+#control-panel #session-status {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+#control-panel .panel-header {
+    margin-bottom: 4px;
+}
+
+#control-panel .resize-handle {
+    display: block;
+}
+
+#filter-panel {
+    top: 140px;
+    left: 20px;
+    width: 340px;
+}
+
+#main-panel {
+    top: 140px;
+    left: 380px;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: grab;
+    user-select: none;
+    margin-bottom: 8px;
+}
+
+.panel-header:active {
+    cursor: grabbing;
+}
+
+.panel-title {
+    font-weight: 700;
+}
+
+.panel-body {
+    overflow: auto;
+    flex: 1;
+    padding-right: 4px;
+}
+
+#stats-panel {
+    top: 20px;
+    left: 365px;
+    width: 260px;
+}
+
+#events-panel {
+    top: 20px;
+    right: 20px;
+    width: 420px;
+    height: 380px;
+}
+
+button {
+    margin-top: 8px;
+    width: 100%;
+    background: #1f2937;
+    color: white;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 7px;
+    cursor: pointer;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+button:hover {
+    background: #374151;
+}
+
+button.primary {
+    background: var(--accent);
+    color: #07111f;
+}
+
+button.danger {
+    background: var(--danger);
+    color: white;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+}
+
+.row button {
+    flex: 1;
+}
+
+.badge {
+    display: inline-block;
+    margin: 2px;
+    padding: 2px 7px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+.badge.danger {
+    background: rgba(244, 63, 94, 0.18);
+    color: #fecdd3;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.alert {
+    color: var(--danger);
+}
+
+hr {
+    border: none;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    margin: 10px 0;
+}
+
+label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 3px 8px 3px 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.resize-handle {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.22);
+    cursor: se-resize;
+}
+
+.event-line {
+    font-family: monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    margin-bottom: 6px;
+    background: rgba(15, 23, 42, 0.64);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.kv {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 4px 8px;
+    margin: 4px 0;
+}
+
+.kv .k {
+    color: var(--muted);
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div class="panel" id="control-panel">
+    <div class="panel-header">
+        <div class="panel-title">Controls</div>
+        <div class="muted" id="graph-view-state">zoom 1.00</div>
+    </div>
+
+    <div class="panel-body">
+        <div class="row control-group">
+            <button onclick="saveCurrentLayoutAsDefault()">Save Layout</button>
+            <button onclick="exportLayout()">Export Layout</button>
+            <button onclick="importLayout()">Import Layout</button>
+            <button onclick="fitGraph()">Fit</button>
+            <button onclick="resetView()">Reset</button>
+            <button onclick="centerOnSelected()">Center</button>
+            <button id="pin-button" onclick="togglePinSelected()">Pin Selected</button>
+            <button onclick="clearSelection()">Clear Selection</button>
+        </div>
+        <div class="row control-group">
+            <button class="primary" onclick="startCapture()">Start</button>
+            <button onclick="pauseCapture()">Pause</button>
+            <button class="danger" onclick="stopCapture()">Stop</button>
+            <button onclick="newSession()">New Session</button>
+        </div>
+
+        <div id="capture-status" class="alert">[checking...]</div>
+
+        <select id="session-select"></select>
+        <button onclick="loadSelectedSession()">Load Session</button>
+        <div id="session-status" class="muted">checking...</div>
+    </div>
+    <div class="resize-handle"></div>
+</div>
+
+<div class="panel" id="filter-panel">
+    <div class="panel-header">
+        <div class="panel-title">Filters</div>
+    </div>
+
+    <div class="panel-body">
+        <div class="muted">Protocol filters</div>
+        <div>
+            <label class="proto-arp"><input type="checkbox" checked data-protocol="arp">ARP</label>
+            <label class="proto-dns"><input type="checkbox" checked data-protocol="dns">DNS</label>
+            <label class="proto-quic"><input type="checkbox" checked data-protocol="quic">QUIC</label>
+            <label class="proto-tcp"><input type="checkbox" checked data-protocol="tcp">TCP</label>
+            <label class="proto-udp"><input type="checkbox" checked data-protocol="udp">UDP</label>
+            <label class="proto-icmp"><input type="checkbox" checked data-protocol="icmp">ICMP</label>
+            <label class="proto-http"><input type="checkbox" checked data-protocol="http">HTTP</label>
+            <label class="proto-tls"><input type="checkbox" checked data-protocol="tls">TLS</label>
+            <label class="proto-scan"><input type="checkbox" checked data-protocol="scan">SCAN</label>
+            <label class="proto-unknown"><input type="checkbox" checked data-protocol="mixed">Mixed</label>
+            <label class="proto-unknown"><input type="checkbox" checked data-protocol="unknown">Other</label>
+            <label><input type="checkbox" id="toggle-ipv6">Show IPv6</label>
+        </div>
+
+        <hr>
+
+        <div class="muted">Search filters</div>
+        <input id="filter-ip" placeholder="Filter IP e.g. 192.168.8.129">
+        <input id="filter-port" placeholder="Filter port e.g. 443">
+        <select id="filter-service">
+            <option value="">All services</option>
+        </select>
+
+        <hr>
+
+        <div class="muted">Edge display</div>
+        <select id="edge-display-mode">
+            <option value="normal">Normal edges</option>
+            <option value="quiet">Quiet low-volume</option>
+            <option value="top">Highlight top talkers</option>
+            <option value="backbone">Backbone emphasis</option>
+        </select>
+
+        <label><input type="checkbox" id="show-logical-edges" checked>Show logical edges</label>
+        <label><input type="checkbox" id="show-gateway-to-external" checked>Show gateway → external</label>
+        <label><input type="checkbox" id="show-external-to-gateway" checked>Show external → gateway</label>
+    </div>
+
+    <div class="resize-handle"></div>
+</div>
+
+<div class="panel" id="main-panel">
+    <div class="panel-header">
+        <div class="panel-title">Network Map</div>
+    </div>
+
+    <div class="panel-body">
+        <div id="status">Loading...</div>
+        <hr>
+        <div id="info">Click a node or edge.</div>
+    </div>
+
+    <div class="resize-handle"></div>
+</div>
+
+<div class="panel" id="stats-panel">
+    <div class="panel-header">
+        <div class="panel-title">Stats</div>
+    </div>
+
+    <div class="panel-body" id="stats-content">
+        Waiting for packets...
+    </div>
+
+    <div class="resize-handle"></div>
+</div>
+
+<div class="panel" id="events-panel">
+    <div class="panel-header">
+        <div class="panel-title">Recent Packet Events</div>
+        <div class="muted" id="events-count">0</div>
+    </div>
+
+    <div class="panel-body" id="events-content">
+        Waiting for events...
+    </div>
+
+    <div class="resize-handle"></div>
+</div>
+
+<script>
+let graph = { nodes: [], edges: [], stats: {} };
+let edgeCache = {};
+let nodeMap = {};
+let selectedNode = null;
+let selectedEdge = null;
+let selectedEdgeKey = null;
+let hoverNode = null;
+let enabledProtocolCache = new Set();
+let filterDirty = true;
+let visibleEdgesCache = [];
+let visibleEdgesDirty = true;
+let physicsPausedUntil = 0;
+
+const TCP_SERVICES = new Set([
+    "tcp",
+    "http",
+    "tls",
+    "ssh",
+    "ftp",
+    "ftp-data",
+    "telnet",
+    "smtp",
+    "pop3",
+    "imap",
+    "smb",
+    "msrpc",
+    "ldap",
+    "ldaps",
+    "rdp",
+    "vnc",
+    "winrm",
+    "winrm-ssl",
+    "mssql",
+    "mysql",
+    "postgres",
+    "oracle",
+    "nfs",
+    "rtsp"
+]);
+
+const UDP_SERVICES = new Set([
+    "udp",
+    "dns",
+    "dhcp",
+    "ntp",
+    "tftp",
+    "snmp",
+    "snmptrap",
+    "syslog",
+    "ike",
+    "quic",
+    "ssdp",
+    "mdns",
+    "llmnr",
+    "netbios-ns",
+    "netbios-dgm",
+    "bacnet",
+    "omron-fins",
+    "ethernet-ip-implicit"
+]);
+
+let camera = JSON.parse(localStorage.getItem("nm:camera") || JSON.stringify({
+    x: 0,
+    y: 0,
+    zoom: 1
+}));
+
+let pinnedNodePositions = JSON.parse(localStorage.getItem("nm:pinnedNodePositions") || "{}");
+
+let draggingNode = null;
+let isPanning = false;
+let pointerMoved = false;
+let panStart = { x: 0, y: 0 };
+let dragOffset = { x: 0, y: 0 };
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function captureCurrentLayout() {
+    const layout = {};
+
+    document.querySelectorAll(".panel").forEach(p => {
+        layout[p.id] = {
+            left: p.style.left,
+            top: p.style.top,
+            right: p.style.right,
+            width: p.style.width,
+            height: p.style.height
+        };
+    });
+
+    return layout;
+}
+
+function exportLayout() {
+    const payload = {
+        version: 1,
+        exported_at: new Date().toISOString(),
+        layout: captureCurrentLayout(),
+        camera,
+        pinnedNodePositions
+    };
+
+    const text = JSON.stringify(payload, null, 2);
+
+    navigator.clipboard.writeText(text)
+        .then(() => alert("Layout copied to clipboard"))
+        .catch(() => {
+            prompt("Copy layout JSON:", text);
+        });
+}
+
+function importLayout() {
+    const text = prompt("Paste layout JSON:");
+    if (!text) return;
+
+    let payload;
+
+    try {
+        payload = JSON.parse(text);
+    } catch {
+        alert("Invalid layout JSON");
+        return;
+    }
+
+    const layout = payload.layout || payload;
+
+    Object.entries(layout).forEach(([id, pos]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        if (pos.left) el.style.left = pos.left;
+        if (pos.top) el.style.top = pos.top;
+        if (pos.right) el.style.right = pos.right;
+        if (pos.width) el.style.width = pos.width;
+        if (pos.height) el.style.height = pos.height;
+
+        localStorage.setItem(`nm:${id}:pos`, JSON.stringify({
+            left: el.style.left,
+            top: el.style.top
+        }));
+
+        localStorage.setItem(`nm:${id}:size`, JSON.stringify({
+            width: el.style.width,
+            height: el.style.height
+        }));
+    });
+
+    if (payload.camera) {
+        camera = payload.camera;
+        localStorage.setItem("nm:camera", JSON.stringify(camera));
+        updateHud();
+    }
+
+    if (payload.pinnedNodePositions) {
+        pinnedNodePositions = payload.pinnedNodePositions;
+        localStorage.setItem("nm:pinnedNodePositions", JSON.stringify(pinnedNodePositions));
+    }
+
+    alert("Layout imported");
+}
+
+function saveCurrentLayoutAsDefault() {
+    const panels = document.querySelectorAll(".panel");
+    const layout = {};
+
+    panels.forEach(p => {
+        layout[p.id] = {
+            left: p.style.left,
+            top: p.style.top,
+            width: p.style.width,
+            height: p.style.height
+        };
+    });
+
+    localStorage.setItem("nm:layout:default", JSON.stringify(layout));
+    alert("Layout saved as default");
+}
+
+function saveLayoutSoon() {
+    localStorage.setItem("nm:camera", JSON.stringify(camera));
+    localStorage.setItem("nm:pinnedNodePositions", JSON.stringify(pinnedNodePositions));
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+function updateHud() {
+    document.getElementById("graph-view-state").innerText =
+        `zoom ${camera.zoom.toFixed(2)} | pan ${Math.round(camera.x)}, ${Math.round(camera.y)}`;
+}
+
+function screenToWorld(x, y) {
+    return {
+        x: (x - camera.x) / camera.zoom,
+        y: (y - camera.y) / camera.zoom
+    };
+}
+
+function worldToScreen(x, y) {
+    return {
+        x: x * camera.zoom + camera.x,
+        y: y * camera.zoom + camera.y
+    };
+}
+
+
+function isTcpLikeProtocol(p) {
+    return TCP_SERVICES.has(String(p || "").toLowerCase());
+}
+
+function isUdpLikeProtocol(p) {
+    return UDP_SERVICES.has(String(p || "").toLowerCase());
+}
+
+function getEnabledProtocols() {
+    if (!filterDirty) return enabledProtocolCache;
+
+    enabledProtocolCache = new Set();
+
+    document.querySelectorAll("[data-protocol]").forEach(cb => {
+        if (cb.checked) enabledProtocolCache.add(cb.dataset.protocol);
+    });
+
+    filterDirty = false;
+    return enabledProtocolCache;
+}
+
+function edgeVisible(e) {
+    const enabled = getEnabledProtocols();
+    const protocols = e.data?.protocols || {};
+    const protocolKeys = Object.keys(protocols);
+    const showLogical = document.getElementById("show-logical-edges")?.checked ?? true;
+    const showGatewayToExternal = document.getElementById("show-gateway-to-external")?.checked ?? true;
+    const showExternalToGateway = document.getElementById("show-external-to-gateway")?.checked ?? true;
+    const vr = e.data?.visual_route;
+
+    if (!showLogical && vr === "logical_direct") {
+        return false;
+    }
+
+    if (!showGatewayToExternal && vr === "gateway_to_external") {
+        return false;
+    }
+
+    if (!showExternalToGateway && vr === "external_to_gateway") {
+        return false;
+    }
+
+    function protocolAllowed(p) {
+        p = String(p || "unknown").toLowerCase();
+
+        // Transport gates
+        if (isTcpLikeProtocol(p) && !enabled.has("tcp")) return false;
+        if (isUdpLikeProtocol(p) && !enabled.has("udp")) return false;
+
+        // Specific protocol/service checkbox wins
+        if (document.querySelector(`[data-protocol="${p}"]`)) {
+            return enabled.has(p);
+        }
+
+        // Unknown/unlisted protocols fall under Other
+        return enabled.has("unknown");
+    }
+
+    // Aggregated edges: visible if ANY contained protocol is allowed
+    if (protocolKeys.length > 0) {
+        return protocolKeys.some(protocolAllowed) && edgeMatchesFilters(e);
+    }
+
+    // Simple edge fallback
+    const type = e.type || "unknown";
+    return protocolAllowed(type) && edgeMatchesFilters(e);
+}
+
+function edgeKey(e) {
+    const route = e.data?.visual_route || "raw";
+
+    if (["local_to_switch", "switch_to_gateway", "gateway_to_switch", "switch_to_local"].includes(route)) {
+        return `${e.from}|${e.to}|${route}`;
+    }
+
+    return `${e.from}|${e.to}|${e.type || "unknown"}|${route}|${e.data?.actual_src || ""}|${e.data?.actual_dst || ""}`;
+}
+
+function syncEdges(newEdges) {
+    const incoming = new Set();
+
+    for (const e of newEdges || []) {
+        const key = edgeKey(e);
+        incoming.add(key);
+
+        edgeCache[key] = {
+            ...e,
+            missingCount: 0,
+            lastSeen: Date.now(),
+            stale: false
+        };
+    }
+
+    for (const key of Object.keys(edgeCache)) {
+        if (!incoming.has(key)) {
+            edgeCache[key].missingCount = (edgeCache[key].missingCount || 0) + 1;
+            edgeCache[key].stale = true;
+
+            // Remove stale visual edges quickly so old wrong routes disappear.
+            if (edgeCache[key].missingCount >= 2) {
+                delete edgeCache[key];
+            }
+        }
+    }
+
+    graph.edges = Object.values(edgeCache);
+    if (selectedEdgeKey && edgeCache[selectedEdgeKey]) {
+        selectedEdge = edgeCache[selectedEdgeKey];
+    } else if (selectedEdgeKey) {
+        selectedEdge = null;
+        selectedEdgeKey = null;
+    }
+}
+
+/* -----------------------------
+   Moveable + resizeable panels
+------------------------------ */
+
+function setupPanels() {
+    document.querySelectorAll(".panel").forEach(panel => {
+        const id = panel.id;
+
+        const savedPos = JSON.parse(localStorage.getItem(`nm:${id}:pos`) || "null");
+        const savedSize = JSON.parse(localStorage.getItem(`nm:${id}:size`) || "null");
+
+        if (savedPos) {
+            panel.style.left = savedPos.left;
+            panel.style.top = savedPos.top;
+            panel.style.right = "auto";
+        }
+
+        if (savedSize) {
+            panel.style.width = savedSize.width;
+            panel.style.height = savedSize.height;
+        }
+
+        const header = panel.querySelector(".panel-header");
+        const handle = panel.querySelector(".resize-handle");
+
+        let moving = false;
+        let resizing = false;
+        let ox = 0;
+        let oy = 0;
+
+        header.addEventListener("mousedown", e => {
+            if (e.button !== 0) return;
+
+            moving = true;
+            const rect = panel.getBoundingClientRect();
+
+            ox = e.clientX - rect.left;
+            oy = e.clientY - rect.top;
+
+            panel.style.zIndex = Date.now();
+        });
+
+        handle.addEventListener("mousedown", e => {
+            e.stopPropagation();
+            resizing = true;
+            panel.style.zIndex = Date.now();
+        });
+
+        window.addEventListener("mousemove", e => {
+            if (moving) {
+                panel.style.left = `${e.clientX - ox}px`;
+                panel.style.top = `${e.clientY - oy}px`;
+                panel.style.right = "auto";
+            }
+
+            if (resizing) {
+                const rect = panel.getBoundingClientRect();
+
+                const w = Math.max(180, e.clientX - rect.left);
+                const h = Math.max(130, e.clientY - rect.top);
+
+                panel.style.width = `${w}px`;
+                panel.style.height = `${h}px`;
+            }
+        });
+
+        window.addEventListener("mouseup", () => {
+            if (moving) {
+                moving = false;
+
+                localStorage.setItem(`nm:${id}:pos`, JSON.stringify({
+                    left: panel.style.left,
+                    top: panel.style.top
+                }));
+            }
+
+            if (resizing) {
+                resizing = false;
+
+                localStorage.setItem(`nm:${id}:size`, JSON.stringify({
+                    width: panel.style.width,
+                    height: panel.style.height
+                }));
+            }
+        });
+    });
+}
+
+function applyDefaultLayout() {
+    const raw = localStorage.getItem("nm:layout:default");
+    if (!raw) return;
+
+    const layout = JSON.parse(raw);
+
+    Object.entries(layout).forEach(([id, pos]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        // Only apply if no saved user override exists
+        const existing = localStorage.getItem(`nm:${id}:pos`);
+        if (existing) return;
+
+        el.style.left = pos.left;
+        el.style.top = pos.top;
+        el.style.width = pos.width;
+        el.style.height = pos.height;
+    });
+}
+
+/* -----------------------------
+   Canvas interaction
+------------------------------ */
+
+canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+
+    const before = screenToWorld(e.clientX, e.clientY);
+
+    camera.zoom = Math.max(0.15, Math.min(5, camera.zoom * factor));
+
+    const after = screenToWorld(e.clientX, e.clientY);
+
+    camera.x += (after.x - before.x) * camera.zoom;
+    camera.y += (after.y - before.y) * camera.zoom;
+
+    updateHud();
+    saveLayoutSoon();
+}, { passive: false });
+
+canvas.addEventListener("mousedown", e => {
+    pointerMoved = false;
+
+    const p = screenToWorld(e.clientX, e.clientY);
+    const hit = pickNodeAtWorld(p.x, p.y);
+
+    if (e.button === 2) {
+        isPanning = true;
+        panStart.x = e.clientX - camera.x;
+        panStart.y = e.clientY - camera.y;
+        return;
+    }
+
+    if (hit) {
+        draggingNode = hit;
+        selectedNode = hit;
+        selectedEdge = null;
+        selectedEdgeKey = null;
+
+        dragOffset.x = p.x - hit.x;
+        dragOffset.y = p.y - hit.y;
+
+        showNodeInfo(hit);
+        syncPinButton();
+
+        return;
+    }
+
+    isPanning = true;
+    panStart.x = e.clientX - camera.x;
+    panStart.y = e.clientY - camera.y;
+});
+
+canvas.addEventListener("mousemove", e => {
+    const p = screenToWorld(e.clientX, e.clientY);
+    hoverNode = pickNodeAtWorld(p.x, p.y);
+    const hoverEdge = !hoverNode ? findNearestEdge(p.x, p.y) : null;
+    canvas.style.cursor = hoverNode || hoverEdge ? "pointer" : (isPanning ? "grabbing" : "grab");
+
+    if (hoverNode) {
+        hoverNode.pulse = Math.max(hoverNode.pulse || 0, 0.8);
+    }
+
+    if (draggingNode) {
+        pointerMoved = true;
+
+        draggingNode.x = p.x - dragOffset.x;
+        draggingNode.y = p.y - dragOffset.y;
+        draggingNode.vx = 0;
+        draggingNode.vy = 0;
+
+        pinNode(draggingNode, false);
+        syncPinButton();
+        saveLayoutSoon();
+
+        return;
+    }
+
+    if (isPanning) {
+        pointerMoved = true;
+
+        camera.x = e.clientX - panStart.x;
+        camera.y = e.clientY - panStart.y;
+
+        updateHud();
+        saveLayoutSoon();
+    }
+});
+
+canvas.addEventListener("mouseup", () => {
+    draggingNode = null;
+    isPanning = false;
+});
+
+canvas.addEventListener("click", e => {
+    if (pointerMoved) return;
+
+    const p = screenToWorld(e.clientX, e.clientY);
+
+    selectedNode = null;
+    selectedEdge = null;
+    selectedEdgeKey = null; 
+
+    const node = pickNodeAtWorld(p.x, p.y);
+
+    if (node) {
+        selectedNode = node;
+        node.pulse = 1.5;
+        showNodeInfo(node);
+        syncPinButton();
+        return;
+    }
+
+    const edge = findNearestEdge(p.x, p.y);
+
+    if (edge) {
+        selectedEdge = edge;
+        selectedEdgeKey = edgeKey(edge);
+        showEdgeInfo(edge);
+        syncPinButton();
+    } else {
+        clearSelection();
+    }
+});
+
+canvas.addEventListener("dblclick", e => {
+    const p = screenToWorld(e.clientX, e.clientY);
+    const node = pickNodeAtWorld(p.x, p.y);
+
+    if (!node) return;
+
+    if (node.pinned) {
+        unpinNode(node);
+    } else {
+        pinNode(node);
+    }
+
+    selectedNode = node;
+    showNodeInfo(node);
+    syncPinButton();
+});
+
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+document.getElementById("filter-service")?.addEventListener("change", () => {
+    // No backend call needed, this is frontend-only filtering
+});
+
+document.getElementById("show-logical-edges")?.addEventListener("change", () => {
+    markVisualFilterDirty();
+});
+
+document.getElementById("show-gateway-to-external")?.addEventListener("change", () => {
+    markVisualFilterDirty();
+});
+
+document.getElementById("show-external-to-gateway")?.addEventListener("change", () => {
+    markVisualFilterDirty();
+});
+
+document.querySelectorAll("[data-protocol]").forEach(cb => {
+    cb.addEventListener("change", () => {
+        markVisualFilterDirty();
+        selectedEdge = null;
+        selectedEdgeKey = null;
+    });
+});
+
+document.getElementById("edge-display-mode")?.addEventListener("change", () => {
+    markVisualFilterDirty();
+});
+
+function rebuildVisibleEdges() {
+    visibleEdgesCache = graph.edges.filter(edgeVisible);
+    visibleEdgesDirty = false;
+}
+
+function getVisibleEdges() {
+    if (visibleEdgesDirty) rebuildVisibleEdges();
+    return visibleEdgesCache;
+}
+
+function markVisualFilterDirty() {
+    filterDirty = true;
+    visibleEdgesDirty = true;
+    physicsPausedUntil = Date.now() + 120;
+}
+
+function pickNodeAtWorld(x, y) {
+    let best = null;
+    let bestDist = Infinity;
+
+    for (const id in nodeMap) {
+        const n = nodeMap[id];
+        const dx = n.x - x;
+        const dy = n.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = getRadius(n) + 6;
+
+        if (dist < radius && dist < bestDist) {
+            best = n;
+            bestDist = dist;
+        }
+    }
+
+    return best;
+}
+
+function pointToQuadraticDistance(px, py, a, b) {
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const curve = Math.min(60, len * 0.12);
+
+    const cx = mx + nx * curve;
+    const cy = my + ny * curve;
+
+    let best = Infinity;
+    let prev = { x: a.x, y: a.y };
+
+    for (let i = 1; i <= 24; i++) {
+        const t = i / 24;
+
+        const qx =
+            (1 - t) * (1 - t) * a.x +
+            2 * (1 - t) * t * cx +
+            t * t * b.x;
+
+        const qy =
+            (1 - t) * (1 - t) * a.y +
+            2 * (1 - t) * t * cy +
+            t * t * b.y;
+
+        best = Math.min(
+            best,
+            pointToSegmentDistance(px, py, prev.x, prev.y, qx, qy)
+        );
+
+        prev = { x: qx, y: qy };
+    }
+
+    return best;
+}
+
+function findNearestEdge(x, y) {
+    let best = null;
+    let bestDist = 34 / camera.zoom;
+
+    for (const e of getVisibleEdges()) {
+        if (!edgeVisible(e)) continue;
+
+        const a = nodeMap[e.from];
+        const b = nodeMap[e.to];
+
+        if (!a || !b) continue;
+
+        const d = pointToQuadraticDistance(x, y, a, b);
+
+        if (d < bestDist) {
+            bestDist = d;
+            best = e;
+        }
+    }
+
+    return best;
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    if (dx === 0 && dy === 0) {
+        return Math.hypot(px - x1, py - y1);
+    }
+
+    let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+    t = Math.max(0, Math.min(1, t));
+
+    const x = x1 + t * dx;
+    const y = y1 + t * dy;
+
+    return Math.hypot(px - x, py - y);
+}
+
+/* -----------------------------
+   Graph data
+------------------------------ */
+
+async function fetchGraph() {
+    try {
+        const res = await fetch("/graph");
+        const newGraph = await res.json();
+
+        // Prevent visual blink when backend briefly returns empty/stale graph
+        if (
+            graph.nodes.length > 0 &&
+            (!newGraph.nodes || newGraph.nodes.length === 0)
+        ) {
+            console.warn("Ignoring empty graph refresh");
+            return;
+        }
+
+        graph = newGraph;
+        const topologyKey = `${newGraph.stats.gateway || ""}|${newGraph.stats.default_switch || ""}`;
+
+        if (window.lastTopologyKey && window.lastTopologyKey !== topologyKey) {
+            edgeCache = {};
+        }
+
+        window.lastTopologyKey = topologyKey;
+        syncEdges(newGraph.edges || []);
+        visibleEdgesDirty = true;
+        syncNodes();
+        updateServiceFilterOptions();
+
+        document.getElementById("status").innerText =
+            `Live | Nodes: ${graph.stats.total_nodes} | Edges: ${graph.stats.total_edges} | Gateway: ${graph.stats.gateway || "unknown"}`;
+
+        updateStatsPanel();
+
+    } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerText = "Disconnected";
+    }
+}
+
+async function fetchEvents() {
+    try {
+        const res = await fetch("/events");
+        const data = await res.json();
+
+        renderEvents(data.items || []);
+
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function seededAngleFromId(id) {
+    let h = 0;
+
+    for (let i = 0; i < String(id).length; i++) {
+        h = ((h << 5) - h) + String(id).charCodeAt(i);
+        h |= 0;
+    }
+
+    return Math.abs(h) % 360;
+}
+
+function seededPosition(id) {
+    let h = 0;
+
+    for (let i = 0; i < id.length; i++) {
+        h = ((h << 5) - h) + id.charCodeAt(i);
+        h |= 0;
+    }
+
+    const angle = (Math.abs(h) % 360) * Math.PI / 180;
+    const radius = 120 + (Math.abs(h) % 320);
+
+    return {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius
+    };
+}
+
+function syncNodes() {
+    const incoming = new Set();
+    const savedAnchor = pinnedNodePositions["__external_anchor__"];
+    const savedLocalAnchor = pinnedNodePositions["__local_anchor__"];
+    const savedMulticastAnchor = pinnedNodePositions["__multicast_anchor__"];
+
+    for (const node of graph.nodes) {
+        incoming.add(node.id);
+
+        if (!nodeMap[node.id]) {
+            const seeded = seededPosition(node.id);
+
+            nodeMap[node.id] = {
+                id: node.id,
+                x: seeded.x,
+                y: seeded.y,
+                vx: 0,
+                vy: 0,
+                pulse: 0,
+                pinned: false
+            };
+        }
+
+        const n = nodeMap[node.id];
+
+        n.label = node.label;
+        n.group = node.group;
+        n.data = node.data || {};
+
+        if (pinnedNodePositions[node.id]) {
+            n.x = pinnedNodePositions[node.id].x;
+            n.y = pinnedNodePositions[node.id].y;
+            n.pinned = true;
+        }
+    }
+
+    if (!nodeMap["__external_anchor__"]) {
+        nodeMap["__external_anchor__"] = {
+            id: "__external_anchor__",
+            label: "External",
+            x: savedAnchor?.x ?? 720,
+            y: savedAnchor?.y ?? 0,
+            vx: 0,
+            vy: 0,
+            pulse: 0,
+            pinned: true,
+            virtual: true,
+            group: "external_anchor",
+            data: {
+                ip: "__external_anchor__",
+                identity: {
+                    label_line_1: "External",
+                    label_line_2: "gravity anchor"
+                }
+            }
+        };
+    }
+
+    if (!nodeMap["__local_anchor__"]) {
+        nodeMap["__local_anchor__"] = {
+            id: "__local_anchor__",
+            label: "Local",
+            x: savedLocalAnchor?.x ?? -520,
+            y: savedLocalAnchor?.y ?? 0,
+            vx: 0,
+            vy: 0,
+            pulse: 0,
+            pinned: true,
+            virtual: true,
+            group: "local_anchor",
+            data: {
+                ip: "__local_anchor__",
+                identity: {
+                    label_line_1: "Local",
+                    label_line_2: "LAN gravity anchor"
+                }
+            }
+        };
+    }
+
+    if (!nodeMap["__multicast_anchor__"]) {
+        nodeMap["__multicast_anchor__"] = {
+            id: "__multicast_anchor__",
+            label: "Multicast",
+            x: savedMulticastAnchor?.x ?? 0,
+            y: savedMulticastAnchor?.y ?? 520,
+            vx: 0,
+            vy: 0,
+            pulse: 0,
+            pinned: true,
+            virtual: true,
+            group: "multicast_anchor",
+            data: {
+                ip: "__multicast_anchor__",
+                identity: {
+                    label_line_1: "Multicast",
+                    label_line_2: "multicast gravity anchor"
+                }
+            }
+        };
+    }
+
+    for (const id of Object.keys(nodeMap)) {
+        if (
+            id === "__external_anchor__" ||
+            id === "__local_anchor__" ||
+            id === "__multicast_anchor__"
+        ) continue;
+
+        if (!incoming.has(id)) {
+            nodeMap[id].missingCount = (nodeMap[id].missingCount || 0) + 1;
+            nodeMap[id].stale = true;
+
+            // remove nodes that backend no longer sends
+            if (nodeMap[id].missingCount >= 2) {
+                delete nodeMap[id];
+
+                if (selectedNode?.id === id) selectedNode = null;
+            }
+        } else {
+            nodeMap[id].missingCount = 0;
+            nodeMap[id].stale = false;
+        }
+    }
+}
+
+function updateStatsPanel() {
+    const suspicious = graph.nodes.filter(n => n.group === "suspicious").length;
+    const external = graph.nodes.filter(n => n.group === "external_host").length;
+    const local = graph.nodes.filter(n => n.group === "local_device").length;
+    const gatewayLoad = graph.stats.gateway_load || {};
+    const nat = graph.stats.nat || {};
+    const tunnels = graph.stats.tunnels || [];
+
+    document.getElementById("stats-content").innerHTML = `
+        <div class="kv"><div class="k">Nodes</div><div>${graph.stats.total_nodes}</div></div>
+        <div class="kv"><div class="k">Edges</div><div>${graph.stats.total_edges}</div></div>
+        <div class="kv"><div class="k">Events</div><div>${graph.stats.total_events}</div></div>
+        <hr>
+        <input id="gateway-input" placeholder="Gateway IP e.g. 192.168.8.1">
+        <button onclick="setGateway()">Set Gateway</button>
+        <button onclick="clearGateway()">Auto Gateway</button>
+        <div class="kv"><div class="k">Gateway</div><div>${graph.stats.gateway || "unknown"}</div></div>
+        <div class="kv"><div class="k">GW packets</div><div>${gatewayLoad.packets || 0}</div></div>
+        <div class="kv"><div class="k">GW bytes</div><div>${gatewayLoad.bytes || 0}</div></div>
+        <div class="kv"><div class="k">GW ext edges</div><div>${gatewayLoad.external_edges || 0}</div></div>
+        <div class="kv"><div class="k">NAT</div><div>${nat.likely_nat ? "likely" : "unknown"}</div></div>
+        <div class="kv"><div class="k">NAT clients</div><div>${nat.local_clients || 0}</div></div>
+        <div class="kv"><div class="k">Ext targets</div><div>${nat.external_targets || 0}</div></div>
+        <div class="kv"><div class="k">VPN/proxy hints</div><div>${tunnels.length}</div></div>
+        <hr>
+        <div class="kv"><div class="k">Window</div><div>${graph.stats.recent_flow_window_seconds || "-"}s</div></div>
+        <div class="kv"><div class="k">Local</div><div>${local}</div></div>
+        <div class="kv"><div class="k">External</div><div>${external}</div></div>
+        <div class="kv"><div class="k">Suspicious</div><div>${suspicious}</div></div>
+    `;
+}
+
+function renderEvents(events) {
+    const el = document.getElementById("events-content");
+    document.getElementById("events-count").innerText = events.length;
+
+    if (!events.length) {
+        el.innerHTML = "Waiting for events...";
+        return;
+    }
+
+    el.innerHTML = events.slice().reverse().map(e => {
+        const time = e.timestamp
+            ? new Date(e.timestamp * 1000).toLocaleTimeString()
+            : "";
+
+        const domain = e.domain ? ` | ${e.domain}` : "";
+        const ports = e.dst_port ? `:${e.dst_port}` : "";
+
+        return `
+            <div class="event-line">
+                <span class="muted">${time}</span>
+                ${e.src_ip || "?"} → ${e.dst_ip || "?"}${ports}
+                <span class="badge">${e.protocol || "unknown"}</span>
+                ${domain}
+            </div>
+        `;
+    }).join("");
+}
+
+/* -----------------------------
+   Pinning
+------------------------------ */
+
+function pinNode(node, persist = true) {
+    if (!node) return;
+
+    node.pinned = true;
+    node.vx = 0;
+    node.vy = 0;
+
+    pinnedNodePositions[node.id] = {
+        x: node.x,
+        y: node.y
+    };
+
+    if (persist) saveLayoutSoon();
+}
+
+function unpinNode(node) {
+    if (!node) return;
+
+    node.pinned = false;
+    delete pinnedNodePositions[node.id];
+
+    saveLayoutSoon();
+}
+
+function togglePinSelected() {
+    if (!selectedNode) return;
+
+    if (selectedNode.pinned) {
+        unpinNode(selectedNode);
+    } else {
+        pinNode(selectedNode);
+    }
+
+    showNodeInfo(selectedNode);
+    syncPinButton();
+}
+
+function syncPinButton() {
+    const btn = document.getElementById("pin-button");
+
+    if (!selectedNode) {
+        btn.innerText = "Pin Selected";
+        return;
+    }
+
+    btn.innerText = selectedNode.pinned ? "Unpin Selected" : "Pin Selected";
+}
+
+/* -----------------------------
+   UI actions
+------------------------------ */
+function collectServicesFromGraph() {
+    const services = new Set();
+
+    for (const n of graph.nodes || []) {
+        for (const s of Object.keys(n.data?.services || {})) {
+            services.add(s);
+        }
+    }
+
+    for (const e of graph.edges || []) {
+        for (const s of Object.keys(e.data?.services || {})) {
+            services.add(s);
+        }
+
+        if (e.data?.service) {
+            services.add(e.data.service);
+        }
+    }
+
+    return Array.from(services).sort();
+}
+
+function updateServiceFilterOptions() {
+    const sel = document.getElementById("filter-service");
+    if (!sel) return;
+
+    const current = sel.value;
+    const services = collectServicesFromGraph();
+
+    sel.innerHTML = `<option value="">All services</option>`;
+
+    for (const service of services) {
+        const opt = document.createElement("option");
+        opt.value = service;
+        opt.textContent = service;
+        sel.appendChild(opt);
+    }
+
+    if (services.includes(current)) {
+        sel.value = current;
+    }
+}
+
+function isIPv6NodeId(id) {
+    // Keep virtual anchors and L2 MAC nodes
+    if (!id || id.startsWith("__") || id.startsWith("l2:")) return false;
+
+    return id.includes(":");
+}
+
+document.getElementById("toggle-ipv6").addEventListener("change", async (e) => {
+    const show = e.target.checked;
+    const savedPositions = {};
+
+    await fetch("/filters/set", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            show_ipv6: show
+        })
+    });
+
+    for (const id in nodeMap) {
+        if (!isIPv6NodeId(id)) {
+            savedPositions[id] = nodeMap[id];
+        }
+    }
+    edgeCache = {};
+
+    nodeMap = {
+        "__external_anchor__": nodeMap["__external_anchor__"],
+        "__local_anchor__": nodeMap["__local_anchor__"],
+        "__multicast_anchor__": nodeMap["__multicast_anchor__"],
+        ...savedPositions
+    };
+
+    selectedNode = null;
+    selectedEdge = null;
+
+    await fetchGraph(); // force immediate refresh
+});
+
+function getTextFilter(id) {
+    return (document.getElementById(id)?.value || "").trim().toLowerCase();
+}
+
+function nodeVisible(n) {
+    const ipFilter = getTextFilter("filter-ip");
+    const serviceFilter = document.getElementById("filter-service")?.value || "";
+
+    if (n.virtual) return true;
+
+    if (ipFilter && !(n.id || "").toLowerCase().includes(ipFilter)) {
+        return false;
+    }
+
+    if (serviceFilter) {
+        const services = n.data?.services || {};
+        if (!Object.keys(services).some(s => s.toLowerCase().includes(serviceFilter))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function edgeMatchesFilters(e) {
+    const ipFilter = getTextFilter("filter-ip");
+    const portFilter = getTextFilter("filter-port");
+    const serviceFilter = document.getElementById("filter-service")?.value || "";
+
+    if (ipFilter) {
+        const hay = `${e.from} ${e.to}`.toLowerCase();
+        if (!hay.includes(ipFilter)) return false;
+    }
+
+    if (portFilter) {
+        const ports = e.data?.ports || [];
+        if (!ports.map(String).includes(portFilter)) return false;
+    }
+
+    if (serviceFilter) {
+        const services = e.data?.services || {};
+        if (!Object.keys(services).some(s => s.toLowerCase().includes(serviceFilter))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+async function setGateway() {
+    const ip = document.getElementById("gateway-input").value.trim();
+
+    await fetch("/gateway/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip })
+    });
+
+    await fetchGraph();
+}
+
+async function clearGateway() {
+    document.getElementById("gateway-input").value = "";
+
+    await fetch("/gateway/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip: null })
+    });
+
+    await fetchGraph();
+}
+
+async function stopCapture() {
+    await fetch("/capture/stop", { method: "POST" });
+    await refreshCaptureStatus();
+}
+
+async function newSession() {
+    await fetch("/sessions/new", { method: "POST" });
+
+    graph = { nodes: [], edges: [], stats: {} };
+    nodeMap = {};
+    selectedNode = null;
+    selectedEdge = null;
+
+    await refreshSessions();
+    await fetchGraph();
+    await fetchEvents();
+    await refreshCaptureStatus();
+}
+
+async function refreshSessions() {
+    const res = await fetch("/sessions");
+    const data = await res.json();
+
+    const sel = document.getElementById("session-select");
+    sel.innerHTML = "";
+
+    for (const item of data.items || []) {
+        const opt = document.createElement("option");
+        opt.value = item.filename;
+        opt.textContent = item.filename;
+
+        if (item.filename === data.current) {
+            opt.selected = true;
+        }
+
+        sel.appendChild(opt);
+    }
+
+    document.getElementById("session-status").innerText =
+        `Session: ${data.current || "none"}`;
+}
+
+async function loadSelectedSession() {
+    const filename = document.getElementById("session-select").value;
+    if (!filename) return;
+
+    await fetch("/sessions/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename })
+    });
+
+    graph = { nodes: [], edges: [], stats: {} };
+    nodeMap = {};
+    selectedNode = null;
+    selectedEdge = null;
+
+    await refreshSessions();
+    await fetchGraph();
+    await fetchEvents();
+    await refreshCaptureStatus();
+}
+
+async function startCapture() {
+    await fetch("/capture/start", { method: "POST" });
+    await refreshCaptureStatus();
+}
+
+async function pauseCapture() {
+    await fetch("/capture/pause", { method: "POST" });
+    await refreshCaptureStatus();
+}
+
+async function refreshCaptureStatus() {
+    try {
+        const res = await fetch("/capture/status");
+        const data = await res.json();
+
+        document.getElementById("capture-status").innerText =
+            `[${data.capture}]`;
+    } catch {
+        document.getElementById("capture-status").innerText =
+            "[unknown]";
+    }
+}
+
+function clearSelection() {
+    selectedNode = null;
+    selectedEdge = null;
+    selectedEdgeKey = null;
+    document.getElementById("info").innerHTML = "Click a node or edge.";
+    syncPinButton();
+}
+
+function centerOnSelected() {
+    if (!selectedNode) return;
+
+    camera.x = canvas.width / 2 - selectedNode.x * camera.zoom;
+    camera.y = canvas.height / 2 - selectedNode.y * camera.zoom;
+
+    updateHud();
+    saveLayoutSoon();
+}
+
+function resetView() {
+    camera = { x: canvas.width / 2, y: canvas.height / 2, zoom: 1 };
+    updateHud();
+    saveLayoutSoon();
+}
+
+function fitGraph() {
+    const nodes = Object.values(nodeMap);
+
+    if (!nodes.length) return;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const n of nodes) {
+        minX = Math.min(minX, n.x);
+        maxX = Math.max(maxX, n.x);
+        minY = Math.min(minY, n.y);
+        maxY = Math.max(maxY, n.y);
+    }
+
+    const width = maxX - minX || 1;
+    const height = maxY - minY || 1;
+
+    const scaleX = canvas.width / (width + 260);
+    const scaleY = canvas.height / (height + 260);
+
+    camera.zoom = Math.min(scaleX, scaleY, 2.5);
+    camera.x = canvas.width / 2 - (minX + width / 2) * camera.zoom;
+    camera.y = canvas.height / 2 - (minY + height / 2) * camera.zoom;
+
+    updateHud();
+    saveLayoutSoon();
+}
+
+/* -----------------------------
+   Visual scoring
+------------------------------ */
+function getEdgeDisplayMode() {
+    return document.getElementById("edge-display-mode")?.value || "normal";
+}
+
+function edgeVolumeScore(e) {
+    const packets = Number(e.data?.packets || 0);
+    const bytes = Number(e.data?.bytes || 0);
+    return packets + (bytes / 1500);
+}
+
+function topTalkerThreshold() {
+    const scores = getVisibleEdges()
+        .map(edgeVolumeScore)
+        .filter(v => v > 0)
+        .sort((a, b) => b - a);
+
+    if (!scores.length) return Infinity;
+
+    return scores[Math.min(9, scores.length - 1)];
+}
+
+function edgePresentation(e) {
+    const mode = getEdgeDisplayMode();
+    const visualRoute = e.data?.visual_route || "";
+    const packets = Number(e.data?.packets || 0);
+    const bytes = Number(e.data?.bytes || 0);
+
+    let alpha = 1.5;
+    let widthBoost = 0;
+    let glow = false;
+
+    if (mode === "quiet") {
+        const volumeAlpha = Math.min(1, Math.max(0.12, Math.log10(packets + 1) / 4));
+        alpha *= volumeAlpha;
+    }
+
+    if (mode === "top") {
+        const threshold = topTalkerThreshold();
+        const isTop = edgeVolumeScore(e) >= threshold;
+
+        if (isTop) {
+            alpha = 1;
+            widthBoost = 1.3;
+            glow = true;
+        } else {
+            alpha *= 0.18;
+        }
+    }
+
+    if (mode === "backbone") {
+        const isBackbone = [
+            "local_to_switch",
+            "switch_to_gateway",
+            "gateway_to_switch",
+            "switch_to_local",
+        ].includes(visualRoute);
+
+        if (isBackbone) {
+            alpha = 1;
+            widthBoost = 0.8;
+            glow = true;
+        } else {
+            alpha *= 0.16;
+        }
+    }
+
+    return { alpha, widthBoost, glow };
+}
+
+function getRadius(n) {
+    const importance = Number(n.data?.importance || 0);
+    const risk = Number(n.data?.risk || 0);
+
+    if (n.group === "local_anchor") return 22;
+    if (n.group === "external_anchor") return 22;
+    if (n.group === "multicast_anchor") return 22;
+    if (n.group === "gateway") return 18 + importance * 1.1;
+    if (n.group === "suspicious") return 12 + importance * 1.1 + risk * 1.4;
+    if (n.group === "switch") return 20 + importance * 0.7;
+
+    return 8 + importance * 1.15 + risk * 0.8;
+}
+
+function nodeColor(group) {
+    return group === "external_anchor" ? "#cfcecc" :
+           group === "local_anchor" ? "#60a5fa" :
+           group === "multicast_anchor" ? "#c084fc" :
+           group === "gateway" ? "#fbbf24" :
+           group === "local_device" ? "#60a5fa" :
+           group === "external_host" ? "#94a3b8" :
+           group === "broadcast" ? "#a78bfa" :
+           group === "multicast" ? "#c084fc" :
+           group === "loopback" ? "#2dd4bf" :
+           group === "suspicious" ? "#f87171" :
+           group === "switch" ? "#38bdf8" :
+           "#e5e7eb";
+}
+
+function edgeColor(type) {
+    return type === "arp" ? "rgba(251,191,36,0.65)" :
+           type === "mixed" ? "rgba(226,232,240,0.55)" :
+           type === "dns" ? "rgba(52,211,153,0.75)" :
+           type === "quic" ? "rgba(45,212,191,0.70)" :
+           type === "tcp" ? "rgba(96,165,250,0.58)" :
+           type === "udp" ? "rgba(167,139,250,0.58)" :
+           type === "icmp" ? "rgba(248,113,113,0.58)" :
+           type === "http" ? "rgba(249,115,22,0.78)" :
+           type === "tls" ? "rgba(34,197,94,0.60)" :
+           type === "scan" ? "rgba(244,63,94,0.86)" :
+           "rgba(148,163,184,0.35)";
+}
+
+/* -----------------------------
+   Physics
+------------------------------ */
+
+function stepPhysics() {
+    if (Date.now() < physicsPausedUntil) return;
+
+    const nodes = Object.values(nodeMap);
+
+    // edge springs
+    for (const e of getVisibleEdges()) {
+        if (!edgeVisible(e)) continue;
+
+        const a = nodeMap[e.from];
+        const b = nodeMap[e.to];
+
+        if (!a || !b) continue;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        const aGroup = a.group;
+        const bGroup = b.group;
+        const touchesExternal = aGroup === "external_host" || bGroup === "external_host";
+
+        const target =
+            e.type === "scan" ? 420 :
+            touchesExternal ? 380 :
+            e.type === "dns" ? 300 :
+            e.type === "arp" ? 220 :
+            320;
+
+        const springStrength = touchesExternal ? 0.00020 : 0.00055;
+        const force = (dist - target) * springStrength * (e.weight || 1);
+
+        const fx = dx / dist * force;
+        const fy = dy / dist * force;
+
+        if (!a.pinned && draggingNode !== a) {
+            a.vx += fx;
+            a.vy += fy;
+        }
+
+        if (!b.pinned && draggingNode !== b) {
+            b.vx -= fx;
+            b.vy -= fy;
+        }
+    }
+
+    // repulsion
+    for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+            const a = nodes[i];
+            const b = nodes[j];
+
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const externalPair = a.group === "external_host" || b.group === "external_host";
+
+            const minDist = getRadius(a) + getRadius(b) + (externalPair ? 140 : 75);
+            const force = Math.min(4.0, (externalPair ? 3200 : 2200) / (dist * dist));
+
+            const fx = dx / dist * force;
+            const fy = dy / dist * force;
+
+            if (!a.pinned && draggingNode !== a) {
+                a.vx += fx;
+                a.vy += fy;
+            }
+
+            if (!b.pinned && draggingNode !== b) {
+                b.vx -= fx;
+                b.vy -= fy;
+            }
+
+            if (dist < minDist) {
+                const push = (minDist - dist) * 0.018;
+
+                if (!a.pinned && draggingNode !== a) {
+                    a.vx += dx / dist * push;
+                    a.vy += dy / dist * push;
+                }
+
+                if (!b.pinned && draggingNode !== b) {
+                    b.vx -= dx / dist * push;
+                    b.vy -= dy / dist * push;
+                }
+            }
+        }
+    }
+
+    // semantic zones
+    for (const n of nodes) {
+        if (n.pinned || draggingNode === n) continue;
+
+        let tx = 0;
+        let ty = 0;
+        let strength = 0.00035;
+
+        if (n.group === "switch") {
+            const gateway = Object.values(nodeMap).find(x => x.group === "gateway");
+            const localAnchor = nodeMap["__local_anchor__"];
+
+            if (gateway && localAnchor) {
+                // place switch between local anchor and gateway
+                tx = (localAnchor.x * 0.45) + (gateway.x * 0.55);
+                ty = (localAnchor.y * 0.45) + (gateway.y * 0.55);
+                strength = 0.0045;
+            } else {
+                tx = -150;
+                ty = 0;
+                strength = 0.0022;
+            }
+        }
+
+        if (n.group === "gateway") {
+            tx = 0;
+            ty = 0;
+            strength = 0.0025;
+        } else if (n.group === "local_device") {
+            const localAnchor = nodeMap["__local_anchor__"];
+
+            if (localAnchor) {
+                const dx = n.x - localAnchor.x;
+                const dy = n.y - localAnchor.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+                // nice soft orbit like external nodes but tighter
+                const importance = Number(n.data?.importance || 0);
+                const orbit = 140 + (importance * 40) + (seededAngleFromId(n.id) % 60);
+                
+                const ringForce = (dist - orbit) * 0.0022;
+
+                n.vx -= (dx / dist) * ringForce;
+                n.vy -= (dy / dist) * ringForce;
+
+                // slight rotation so LAN doesn't stack
+                const tangentStrength = 0.012;
+                n.vx += (-dy / dist) * tangentStrength;
+                n.vy += (dx / dist) * tangentStrength;
+
+                continue; // skip default tx/ty logic
+            } else {
+                // fallback if anchor missing
+                tx = -420;
+                ty = 0;
+                strength = 0.00075;
+            }
+        } else if (n.group === "external_host") {
+            const anchor = nodeMap["__external_anchor__"];
+
+            if (anchor) {
+                const dx = n.x - anchor.x;
+                const dy = n.y - anchor.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+                // Desired orbit distance around external anchor
+                const orbit = 260 + ((seededAngleFromId(n.id) % 180));
+
+                // Pull/push node toward orbit ring, not directly into anchor
+                const ringForce = (dist - orbit) * 0.0022;
+
+                n.vx -= (dx / dist) * ringForce;
+                n.vy -= (dy / dist) * ringForce;
+
+                // Small tangential force so the cloud feels orbital
+                const tangentStrength = 0.009;
+                n.vx += (-dy / dist) * tangentStrength;
+                n.vy += (dx / dist) * tangentStrength;
+
+                // Skip normal tx/ty pull
+                continue;
+            } else {
+                tx = 720;
+                ty = 0;
+                strength = 0.0011;
+            }
+        } else if (n.group === "suspicious") {
+            tx = 0;
+            ty = -330;
+            strength = 0.0012;
+        } else if (n.group === "broadcast" || n.group === "multicast") {
+            const multicastAnchor = nodeMap["__multicast_anchor__"];
+
+            if (multicastAnchor) {
+                const dx = n.x - multicastAnchor.x;
+                const dy = n.y - multicastAnchor.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+                const orbit = 120 + (seededAngleFromId(n.id) % 90);
+                const ringForce = (dist - orbit) * 0.002;
+
+                n.vx -= (dx / dist) * ringForce;
+                n.vy -= (dy / dist) * ringForce;
+
+                continue;
+            } else {
+                tx = 0;
+                ty = 420;
+                strength = 0.001;
+            }
+        }
+
+        n.vx += (tx - n.x) * strength;
+        n.vy += (ty - n.y) * strength;
+
+        // importance gravity inward, risk pushes upward/outward
+        const importance = Number(n.data?.importance || 0);
+        const risk = Number(n.data?.risk || 0);
+
+        n.vx += (0 - n.x) * importance * 0.000015;
+        n.vy += (0 - n.y) * importance * 0.000015;
+
+        if (risk > 0) {
+            n.vy += (-420 - n.y) * risk * 0.000025;
+        }
+    }
+
+    // integrate
+    for (const n of nodes) {
+        if (n.virtual || n.pinned || draggingNode === n) {
+            n.vx = 0;
+            n.vy = 0;
+            continue;
+        }
+
+        n.x += n.vx;
+        n.y += n.vy;
+
+        n.vx *= 0.84;
+        n.vy *= 0.84;
+
+        n.pulse = Math.max(0, (n.pulse || 0) * 0.92);
+    }
+}
+
+/* -----------------------------
+   Drawing
+------------------------------ */
+
+function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    ctx.fillStyle = "#05070d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawBackgroundStars();
+
+    if (!graph.nodes.length) {
+        ctx.fillStyle = "#e5e7eb";
+        ctx.font = "18px monospace";
+        ctx.fillText("Waiting for packets...", 40, 80);
+    }
+
+    ctx.setTransform(camera.zoom, 0, 0, camera.zoom, camera.x, camera.y);
+
+    drawEdges();
+    drawNodes();
+
+    requestAnimationFrame(draw);
+}
+
+function drawBackgroundStars() {
+    for (let i = 0; i < 70; i++) {
+        const x = (i * 137) % Math.max(canvas.width, 1);
+        const y = (i * 89) % Math.max(canvas.height, 1);
+
+        ctx.beginPath();
+        ctx.fillStyle = i % 5 === 0 ? "rgba(147,197,253,0.12)" : "rgba(255,255,255,0.06)";
+        ctx.arc(x, y, (i % 3) + 0.6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawArrowHead(x, y, angle, size, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-size, -size * 0.55);
+    ctx.lineTo(-size, size * 0.55);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawEdges() {
+    for (const e of getVisibleEdges()) {
+        if (!edgeVisible(e)) continue;
+
+        const a = nodeMap[e.from];
+        const b = nodeMap[e.to];
+
+        if (!a || !b) continue;
+
+        if (!nodeVisible(a) || !nodeVisible(b)) continue;
+
+        if (selectedNode && e.from !== selectedNode.id && e.to !== selectedNode.id) {
+            continue;
+        }
+
+        ctx.beginPath();
+
+        const visualRoute = e.data?.visual_route || null;
+        const isLogicalDirect = visualRoute === "logical_direct";
+
+        ctx.strokeStyle = edgeColor(e.type);
+
+        if (visualRoute === "gateway_to_external" || visualRoute === "external_to_gateway") {
+            ctx.strokeStyle = "rgba(96,165,250,0.72)";
+        }
+
+        if (isLogicalDirect) {
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.28;
+            ctx.strokeStyle = edgeColor(e.type);
+        } else if (visualRoute) {
+            ctx.setLineDash([7, 6]);
+            ctx.globalAlpha = 0.72;
+        } else {
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+        }
+
+        const packets = Number(e.data?.packets || 0);
+        const bytes = Number(e.data?.bytes || 0);
+        const presentation = edgePresentation(e);
+        ctx.globalAlpha *= presentation.alpha;
+
+        // traffic volume thickness
+        let width = 1;
+
+        // Only start thickening after meaningful volume
+        if (packets > 100 || bytes > 250000) {
+            const packetWidth = Math.log10(packets / 100) * 1.2;
+            const byteWidth = Math.log10(bytes / 250000) * 1.4;
+
+            width += Math.max(0, packetWidth) + Math.max(0, byteWidth);
+        }
+
+        // Cap heavy flows
+        width = Math.max(1, Math.min(width, 9));
+        width += presentation.widthBoost;
+        ctx.lineWidth = width;
+
+        if (selectedEdgeKey && edgeKey(e) === selectedEdgeKey) {
+            ctx.lineWidth = width + 3;
+            ctx.globalAlpha = 1;
+        }
+
+        if (width >= 5 || presentation.glow) {
+            ctx.shadowColor = edgeColor(e.type);
+            ctx.shadowBlur = width * 1.5;
+        }
+
+        if (isLogicalDirect) {
+            width = Math.min(width, 3.5);
+        }
+
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+
+        const curve = Math.min(60, len * 0.12);
+
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(mx + nx * curve, my + ny * curve, b.x, b.y);
+        ctx.stroke();
+
+        const arrowT = 0.72;
+        const cx = mx + nx * curve;
+        const cy = my + ny * curve;
+
+        const qx =
+            (1 - arrowT) * (1 - arrowT) * a.x +
+            2 * (1 - arrowT) * arrowT * cx +
+            arrowT * arrowT * b.x;
+
+        const qy =
+            (1 - arrowT) * (1 - arrowT) * a.y +
+            2 * (1 - arrowT) * arrowT * cy +
+            arrowT * arrowT * b.y;
+
+        const tx =
+            2 * (1 - arrowT) * (cx - a.x) +
+            2 * arrowT * (b.x - cx);
+
+        const ty =
+            2 * (1 - arrowT) * (cy - a.y) +
+            2 * arrowT * (b.y - cy);
+
+        drawArrowHead(qx, qy, Math.atan2(ty, tx), Math.max(7, width + 5), ctx.strokeStyle);
+        ctx.shadowBlur = 0;
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+
+        const domains = e.data?.domains || [];
+
+        if (domains.length) {
+            ctx.save();
+            ctx.font = "10px monospace";
+            ctx.fillStyle = "#cbd5e1";
+            ctx.fillText(domains[0], mx + nx * curve + 6, my + ny * curve - 6);
+            ctx.restore();
+        }
+    }
+}
+
+function short(s, max = 48) {
+    return s && s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function drawNodes() {
+    for (const id in nodeMap) {
+        const n = nodeMap[id];
+        if (!nodeVisible(n)) continue;
+
+        const radius = getRadius(n);
+        const color = nodeColor(n.group);
+
+        ctx.shadowColor = color;
+        ctx.shadowBlur = selectedNode === n ? 24 : 10 + (n.pulse || 0) * 10;
+
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+
+        if (n.pinned) {
+            ctx.beginPath();
+            ctx.fillStyle = "#ffffff";
+            ctx.arc(n.x + radius - 2, n.y - radius + 2, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (selectedNode === n) {
+            ctx.beginPath();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2;
+            ctx.arc(n.x, n.y, radius + 5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        if (n.group === "suspicious") {
+            ctx.beginPath();
+            ctx.strokeStyle = "#f43f5e";
+            ctx.lineWidth = 2;
+            ctx.arc(n.x, n.y, radius + 10 + Math.sin(Date.now() / 140) * 2, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        const identity = n.data?.identity || {};
+
+        const line1 =
+            identity.label_line_1 ||
+            n.data?.display_name ||
+            n.label ||
+            n.id;
+
+        const line2 =
+            identity.label_line_2 ||
+            n.data?.ip ||
+            n.id;
+
+        // Line 1 (main identity)
+        ctx.font = "11px monospace";
+        ctx.fillStyle = "#e5e7eb";
+        ctx.fillText(short(line1), n.x + radius + 7, n.y + 4);
+        
+        // Line 2 (IP)
+        ctx.font = "10px monospace";
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(short(line2), n.x + radius + 7, n.y + 16);
+    }
+}
+
+/* -----------------------------
+   Details panels
+------------------------------ */
+
+function showNodeInfo(n) {
+    const data = n.data || {};
+    const flags = data.flags || [];
+
+    document.getElementById("info").innerHTML = `
+        <b>${n.label}</b><br>
+        <span class="muted">${n.group}</span>
+        ${n.pinned ? `<span class="badge">pinned</span>` : ""}
+        <hr>
+
+        <div class="kv"><div class="k">IP</div><div>${data.ip || n.id}</div></div>
+        <div class="kv"><div class="k">Identity</div><div>${data.identity?.label_line_1 || "unknown"}</div></div>
+        <div class="kv"><div class="k">Role</div><div>${data.identity?.role || "unknown"}</div></div>
+        <div class="kv"><div class="k">OS</div><div>${data.identity?.os || "unknown"}</div></div>
+        <div class="kv"><div class="k">Vendor</div><div>${data.identity?.vendor || "unknown"}</div></div>
+        <div class="kv"><div class="k">Confidence</div><div>${((data.identity?.confidence || 0) * 100).toFixed(0)}%</div></div>
+        <div class="kv"><div class="k">Hostname</div><div>${data.hostname || "unknown"}</div></div>
+        <div class="kv"><div class="k">Domain</div><div>${data.domain || "unknown"}</div></div>
+        <div class="kv"><div class="k">DNS answer</div><div>${data.dns_answer_name || "none"}</div></div>
+        <div class="kv"><div class="k">Name</div><div>${data.display_name || n.label || n.id}</div></div>
+        <div class="kv"><div class="k">MAC</div><div>${data.mac || "unknown"}</div></div>
+        <div class="kv"><div class="k">Access path</div><div>${data.access_path || "unknown"}</div></div>
+        <div class="kv"><div class="k">Packets</div><div>${data.packets || 0}</div></div>
+        <div class="kv"><div class="k">Bytes</div><div>${data.bytes || 0}</div></div>
+        <div class="kv"><div class="k">Importance</div><div>${(data.importance || 0).toFixed(2)}</div></div>
+        <div class="kv"><div class="k">Risk</div><div>${(data.risk || 0).toFixed(2)}</div></div>
+        ${(data.risk_findings || []).length ? `
+        <hr>
+        <div class="muted">Risk findings</div>
+        <div>
+            ${(data.risk_findings || []).map(f => `
+                <div class="event-line">
+                    <b>${f.kind}</b>
+                    <span class="badge">${f.severity || "medium"}</span>
+                    <span class="badge">${f.points || 0} pts</span><br>
+                    ${f.reason || ""}
+                    ${f.evidence ? `<br><span class="muted">${JSON.stringify(f.evidence)}</span>` : ""}
+                </div>
+            `).join("")}
+        </div>
+    ` : ""}
+        <div class="kv"><div class="k">Targets</div><div>${data.target_count || 0}</div></div>
+        <div class="kv"><div class="k">Scan ports</div><div>${data.scan_port_count || 0}</div></div>
+        <div class="kv"><div class="k">External</div><div>${data.external_target_count || 0}</div></div>
+        <div class="kv"><div class="k">DNS domains</div><div>${data.dns_domain_count || 0}</div></div>
+        ${data.interfaces ? `
+        <hr>
+        <div class="muted">Switch interfaces / L2 MACs</div>
+        <div>
+            ${Object.values(data.interfaces).map(iface => `
+                <div class="event-line">
+                    <b>${iface.mac}</b><br>
+                    Packets: ${iface.packets || 0} | Bytes: ${iface.bytes || 0}<br>
+                    ${Object.entries(iface.protocols || {})
+                        .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                        .join("")}
+                </div>
+            `).join("")}
+        </div>
+    ` : ""}
+        <hr>
+        <div class="muted">DNS names seen</div>
+        <div>
+            ${(data.dns_names || []).map(h => `<span class="badge">${h}</span>`).join("") || `<span class="muted">No DNS names seen</span>`}
+        </div>
+        
+        <hr>
+
+        <div>
+            ${(data.ports || []).map(p => `<span class="badge">${p}</span>`).join("") || `<span class="muted">No ports tracked</span>`}
+        </div>
+
+        <hr>
+
+        <div>
+            ${Object.entries(data.protocols || {})
+                .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                .join("")}
+        </div>
+
+        ${flags.length ? `
+            <hr>
+            <div>
+                ${flags.map(f => `<span class="badge danger">${f}</span>`).join("")}
+            </div>
+        ` : ""}
+    `;
+}
+
+function showEdgeInfo(e) {
+    const data = e.data || {};
+    const connections = data.connections || [];
+
+    document.getElementById("info").innerHTML = `
+        <b>${e.from} → ${e.to}</b><br>
+        <span class="badge">${e.type}</span>
+        ${data.visual_route ? `<span class="badge">${data.visual_route}</span>` : ""}
+        <hr>
+
+        <div class="kv"><div class="k">Packets</div><div>${data.packets || 0}</div></div>
+        <div class="kv"><div class="k">Bytes</div><div>${data.bytes || 0}</div></div>
+        <div class="kv"><div class="k">Weight</div><div>${(e.weight || 0).toFixed(2)}</div></div>
+        ${data.actual_src ? `<div class="kv"><div class="k">Actual src</div><div>${data.actual_src}</div></div>` : ""}
+        ${data.actual_dst ? `<div class="kv"><div class="k">Actual dst</div><div>${data.actual_dst}</div></div>` : ""}
+        ${connections.length ? `
+        <hr>
+        <div class="muted">Connections on this visual segment</div>
+        <div>
+            ${connections.slice(0, 40).map(c => `
+                <div class="event-line">
+                    <b>${c.actual_src || "?"} → ${c.actual_dst || "?"}</b>
+                    <span class="badge">${c.type || "unknown"}</span><br>
+                    Packets: ${c.packets || 0} | Bytes: ${c.bytes || 0}
+                    ${(c.ports || []).length ? `<br>Ports: ${(c.ports || []).join(", ")}` : ""}
+                    ${(c.domains || []).length ? `<br>Domains: ${(c.domains || []).slice(0, 3).join(", ")}` : ""}
+                </div>
+            `).join("")}
+            ${connections.length > 40 ? `<div class="muted">Showing 40 of ${connections.length}</div>` : ""}
+        </div>
+    ` : ""}
+
+        <hr>
+
+        <div class="muted">Protocols</div>
+        <div>
+            ${Object.entries(data.protocols || {})
+                .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                .join("")}
+        </div>
+
+        <hr>
+
+        <div class="muted">Ports</div>
+        <div>
+            ${(data.ports || []).map(p => `<span class="badge">${p}</span>`).join("") || "none"}
+        </div>
+
+        <hr>
+
+        <div class="muted">Domains</div>
+        <div>
+            ${(data.domains || []).join("<br>") || "none"}
+        </div>
+    `;
+}
+
+/* -----------------------------
+   Init
+------------------------------ */
+
+setupPanels();
+applyDefaultLayout();
+updateHud();
+
+refreshSessions();
+refreshCaptureStatus();
+fetchGraph();
+fetchEvents();
+
+draw();
+
+setTimeout(() => setInterval(fetchGraph, 3000), 500);
+setTimeout(() => setInterval(fetchEvents, 5000), 1000);
+setTimeout(() => setInterval(refreshCaptureStatus, 10000), 1500);
+setTimeout(() => setInterval(refreshSessions, 30000), 2000);
+
+setInterval(stepPhysics, 33);
+</script>
+
+</body>
+</html>
