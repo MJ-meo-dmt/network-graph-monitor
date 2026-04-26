@@ -68,19 +68,24 @@ def load_oui_map():
     if OUI_CACHE is not None:
         return OUI_CACHE
 
-    path = resource_path("backend/oui.csv")
+    path = resource_path("data/oui/oui.csv")
     mapping = {}
 
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8-sig", errors="ignore", newline="") as f:
-            reader = csv.DictReader(f)
+    if not os.path.exists(path):
+        print("OUI file not found at data/oui/oui.csv (vendor lookup disabled)\n")
+        print("Download OUI CSV from: https://standards-oui.ieee.org/oui/oui.csv")
+        OUI_CACHE = {}
+        return OUI_CACHE
 
-            for row in reader:
-                prefix = normalize_oui_prefix(row.get("Assignment"))
-                vendor = (row.get("Organization Name") or "").strip()
+    with open(path, "r", encoding="utf-8-sig", errors="ignore", newline="") as f:
+        reader = csv.DictReader(f)
 
-                if prefix and vendor:
-                    mapping[prefix] = vendor
+        for row in reader:
+            prefix = normalize_oui_prefix(row.get("Assignment"))
+            vendor = (row.get("Organization Name") or "").strip()
+
+            if prefix and vendor:
+                mapping[prefix] = vendor
 
     OUI_CACHE = mapping
     print(f"Loaded {len(mapping)} OUI vendor prefixes")
