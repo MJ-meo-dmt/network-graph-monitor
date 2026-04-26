@@ -10,12 +10,13 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 
 > Packets → Analyzer → State → Graph Builder → UI
 
-## Features 
+## Features
 
 - Live packet capture using Scapy
 - Interactive browser-based network graph with real-time updates
 
 ### Network Topology & Visualization
+
 - Automatic grouping of:
   - Local devices
   - External hosts
@@ -25,10 +26,12 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - Gateway-aware visual routing:
   - Local → Switch → Gateway → External
 - Logical edges (optional) showing actual source/destination paths
-- Interactive connection tracing across multi-hop paths
+- Interactive connection tracing across multi-hop paths:
   - Select a connection to highlight its full path across hops
+- Traffic-based node heat coloring for active external hosts
 
 ### Protocol, Service & Traffic Analysis
+
 - Protocol detection:
   - ARP, DNS, ICMP, TCP, UDP, QUIC, TLS, HTTP, and more
 - Service detection via port mapping:
@@ -38,32 +41,53 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - DNS-aware analysis:
   - Separation of DNS queries vs resolved hostnames
   - Domain attribution only where resolution is confirmed
+  - Reverse-DNS noise filtering for `in-addr.arpa` / `ip6.arpa`
 
 ### Layer 2 Awareness
-- Detection of L2 control traffic:
+
+- Detection of Layer 2 control traffic:
   - STP / RSTP / MSTP
   - CDP, LLDP, VTP
   - LACP
+- CDP / LLDP metadata extraction:
+  - Device name / hostname
+  - Platform / model hints
+  - Capabilities
+  - Observed switch port IDs
+- Switch identity enrichment:
+  - OUI-based vendor lookup
+  - Network switch role inference
+  - Network device OS classification
+  - Confidence scoring
 - VLAN (802.1Q) detection and tagging
 - EAPOL / 802.1X authentication visibility
 - LLC / SNAP frame inspection
+- Observed switch interface / L2 MAC summaries
 
 ### Filtering & Exploration
-- Protocol-based filtering (TCP/UDP + higher-level protocols)
-- Service-based filtering (dropdown)
+
+- Protocol-based filtering:
+  - TCP / UDP transport filtering
+  - Higher-level protocol filtering
+- Service-based filtering via dropdown
 - IPv6 show/hide toggle
 - Edge label visibility toggle
 - Logical edge visibility toggle
 - Gateway ↔ external edge toggles
+- Top talker filtering:
+  - Top 5
+  - Top 10
+  - Top 20
 - Search filters:
   - IP
   - Port
   - Service
 
 ### Visual Clarity & Layout
+
 - Edge display modes:
   - Normal
-  - Quiet (volume-based fading)
+  - Quiet low-volume edges
   - Top talkers
   - Backbone emphasis
 - Multicast anchor to reduce layout clutter
@@ -76,16 +100,18 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - Export / import UI layouts
 
 ### Data & State Management
+
 - Session-based capture history
 - Automatic session creation and switching
 - Persistent UI layout and panel state
 
 ### Enrichment & Analysis
+
 - Vendor lookup via IEEE OUI database
 - Basic risk / suspicious behavior scoring
 - Connection-level breakdown per visual edge
-- Domain filtering (noise reduction for reverse DNS)
-  - Domain filtering (hides reverse DNS noise such as in-addr.arpa / ip6.arpa)
+- DNS query visibility per edge
+- Domain filtering for noisy reverse-DNS lookups
 
 ## Use Cases
 
