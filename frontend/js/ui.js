@@ -281,6 +281,9 @@ function showNodeInfo(n) {
         <div class="kv"><div class="k">Role</div><div>${data.identity?.role || "unknown"}</div></div>
         <div class="kv"><div class="k">OS</div><div>${data.identity?.os || "unknown"}</div></div>
         <div class="kv"><div class="k">Vendor</div><div>${data.identity?.vendor || "unknown"}</div></div>
+        ${n.data.platform ? `<div class="kv"><div class="k">Platform</div><div>${n.data.platform}</div></div>` : ""}
+        ${n.data.capabilities ? `<div class="kv"><div class="k">Capabilities</div><div>${n.data.capabilities}</div></div>` : ""}
+        ${(n.data.ports_seen || []).length ? `<div class="kv"><div class="k">Observed switch ports</div><div>${n.data.ports_seen.join(", ")}</div></div>` : ""}
         <div class="kv"><div class="k">Confidence</div><div>${((data.identity?.confidence || 0) * 100).toFixed(0)}%</div></div>
         <div class="kv"><div class="k">Hostname</div><div>${data.hostname || "unknown"}</div></div>
         <div class="kv"><div class="k">Domain</div><div>${data.domain || "unknown"}</div></div>
