@@ -993,6 +993,7 @@ def update_l2_state(state, event):
     switch_name = event.get("l2_device_name")
     proto = event.get("protocol", "l2")
     name = event.get("l2_device_name")
+    meta = event.get("l2_meta") or {}
 
     if not src_mac:
         return
@@ -1065,6 +1066,30 @@ def update_l2_state(state, event):
     # Pick the first observed switch-like L2 node as default visual access switch.
     if not state.get("default_switch") and dev.get("kind") == "switch":
         state["default_switch"] = node_id
+
+    # Deal with meta:
+    if meta.get("hostname"):
+        current_name = str(dev.get("name") or "").strip().lower()
+        if (
+            not dev.get("name")
+            or dev["name"].startswith("Switch ")
+            or current_name in generic_l2_names
+            or current_name == "operating"
+        ):
+            dev["name"] = meta["hostname"]
+    
+    if meta.get("platform"):
+        dev["platform"] = meta["platform"]
+
+    if meta.get("capabilities"):
+        dev["capabilities"] = meta["capabilities"]
+
+    # Future topology
+    if meta.get("port_id"):
+        ports_seen = dev.setdefault("ports_seen", [])
+
+        if meta["port_id"] not in ports_seen:
+            ports_seen.append(meta["port_id"])
 
 def update_state(event):
     state = load_state()
@@ -1781,6 +1806,9 @@ def build_graph(state):
                 "kind": l2.get("kind"),
                 "role": identity.get("role"),
                 "vendor": identity.get("vendor"),
+                "platform": l2.get("platform"),
+                "capabilities": l2.get("capabilities"),
+                "ports_seen": list(l2.get("ports_seen", [])),
                 "os": identity.get("os"),
                 "display_name": identity.get("name"),
                 "hostname": identity.get("hostname"),
