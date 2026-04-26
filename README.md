@@ -8,7 +8,7 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 
 `Designed for network engineers and security analysts in lab and local environments.`
 
-*Packets → Analyzer → State → Graph Builder → UI*
+> Packets → Analyzer → State → Graph Builder → UI
 
 ## Features 
 
@@ -177,7 +177,9 @@ This file is ignored by Git because it is large and can be downloaded separately
 ## Running
 
 ### From the project root:
-`⚠️ Run the terminal as Administrator (required for packet capture on Windows)`
+
+> ⚠️ Packet capture typically requires elevated privileges (Administrator/root)
+
 ```bash
 python backend/server.py
 ```
