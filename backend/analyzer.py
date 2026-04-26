@@ -1,8 +1,9 @@
 import time
 from scapy.all import IP, IPv6, Ether, TCP, UDP, DNS, DNSQR, ARP, ICMP
-from scapy.all import Dot3, LLC, SNAP
+from scapy.all import Dot3, LLC, SNAP, Dot1Q
 from scapy.layers.l2 import STP
-from scapy.all import DNSRR, NBNSQueryRequest, NBNSQueryResponse
+from scapy.layers.eap import EAPOL
+from scapy.all import NBNSQueryRequest, NBNSQueryResponse
 
 SERVICE_PORTS = {
     20: ("ftp-data", "file_transfer"),
@@ -52,7 +53,36 @@ SERVICE_PORTS = {
     8443: ("https-alt", "web"),
     9100: ("jetdirect", "printer"),
 
-    # OT / ICS
+        # Discovery / local network
+    1900: ("ssdp", "discovery"),
+    3702: ("ws-discovery", "discovery"),
+    5353: ("mdns", "name_resolution"),
+    5355: ("llmnr", "name_resolution"),
+
+    # Common infra / auth / voice
+    88: ("kerberos", "directory"),
+    1812: ("radius", "auth"),
+    1813: ("radius-acct", "auth"),
+    4500: ("ipsec-nat-t", "vpn"),
+    5060: ("sip", "voip"),
+    5061: ("sips", "voip"),
+
+    # More databases / platforms
+    6379: ("redis", "database"),
+    9200: ("elasticsearch", "database"),
+    27017: ("mongodb", "database"),
+
+    # More remote/admin
+    1080: ("socks-proxy", "proxy"),
+    3128: ("http-proxy", "proxy"),
+    5901: ("vnc", "remote_access"),
+
+    # OT / ICS 
+    789: ("redlion-crimson", "ot"),
+    1911: ("fox", "ot"),
+    2455: ("codesys", "ot"),
+    18245: ("ge-srtp", "ot"),
+    20547: ("proconos", "ot"),
     102: ("s7comm", "ot"),
     502: ("modbus", "ot"),
     20000: ("dnp3", "ot"),
@@ -72,10 +102,47 @@ SERVICE_PORTS = {
 L2_PROTOCOL_MACS = {
     "01:00:0c:cc:cc:cc": "cdp",
     "01:00:0c:cc:cc:cd": "vtp",
-    "01:80:c2:00:00:00": "stp",
-    "01:80:c2:00:00:0e": "lldp",
     "01:00:0c:00:00:00": "cisco_l2",
+
+    "01:80:c2:00:00:00": "stp",
+    "01:80:c2:00:00:08": "stp",
+    "01:80:c2:00:00:0e": "lldp",
+
+    "01:80:c2:00:00:02": "lacp",
+    "01:80:c2:00:00:03": "lacp",
 }
+
+def l2_kind_for_proto(proto):
+    if proto in {"stp", "rstp", "mstp", "cdp", "lldp", "vtp", "cisco_l2", "lacp"}:
+        return "switch"
+
+    if proto in {"eapol", "dot1x"}:
+        return "auth_control"
+
+    if proto in {"vlan"}:
+        return "vlan"
+
+    return "l2_device"
+
+
+def l2_category_for_proto(proto):
+    if proto in {"stp", "rstp", "mstp", "cdp", "lldp", "vtp", "cisco_l2", "lacp"}:
+        return "layer2_control"
+
+    if proto in {"eapol", "dot1x"}:
+        return "auth"
+
+    if proto == "vlan":
+        return "layer2"
+
+    return "layer2"
+
+
+def safe_int(value):
+    try:
+        return int(value)
+    except Exception:
+        return None
 
 def get_l2_macs(pkt):
     if Ether in pkt:
@@ -122,6 +189,9 @@ def detect_l2_control(pkt):
     # STP may be visible as an actual STP layer too
     if not proto and STP in pkt:
         proto = "stp"
+    
+    if not proto and EAPOL in pkt:
+        proto = "eapol"
 
     if not proto:
         return None
@@ -159,9 +229,9 @@ def detect_l2_control(pkt):
         "src_mac": src_mac,
         "dst_mac": dst_mac,
         "l2_device_name": device_name,
-        "l2_kind": "switch",
+        "l2_kind": l2_kind_for_proto(proto),
         "service": proto,
-        "category": "layer2",
+        "category": l2_category_for_proto(proto),
         "transport": "l2",
         "summary": f"{proto.upper()} from {src_mac}"
     }
@@ -177,14 +247,6 @@ def guess_service(src_port, dst_port, transport):
             return service, category
 
     return None, None
-
-
-def payload_len(pkt):
-    try:
-        return len(bytes(pkt.payload.payload.payload))
-    except Exception:
-        return 0
-
 
 def tcp_flag_summary(flags):
     flags = str(flags)
@@ -241,7 +303,11 @@ def analyze_packet(pkt):
         "ip_len": None,
         "tcp_flags": None,
         "payload_len": 0,
-        "transport": None
+        "transport": None,
+        "l2_proto": None,
+        "l2_details": {},
+        "vlan": None,
+        "vlans": []
     }
 
     src_mac, dst_mac = get_l2_macs(pkt)
@@ -251,6 +317,42 @@ def analyze_packet(pkt):
 
     if dst_mac:
         event["dst_mac"] = dst_mac
+
+    if Dot3 in pkt:
+        event["l2_proto"] = "dot3"
+
+    if Dot1Q in pkt:
+        event["l2_proto"] = event["l2_proto"] or "dot1q"
+        event["vlan"] = safe_int(pkt[Dot1Q].vlan)
+
+        try:
+            event["vlans"] = [safe_int(layer.vlan) for layer in pkt.getlayers(Dot1Q)]
+            event["vlans"] = [v for v in event["vlans"] if v is not None]
+        except Exception:
+            event["vlans"] = [event["vlan"]] if event["vlan"] is not None else []
+
+        event["l2_details"]["vlan"] = event["vlan"]
+        event["l2_details"]["vlans"] = event["vlans"]
+
+    if LLC in pkt:
+        event["l2_proto"] = event["l2_proto"] or "llc"
+        event["l2_details"]["llc_dsap"] = safe_int(pkt[LLC].dsap)
+        event["l2_details"]["llc_ssap"] = safe_int(pkt[LLC].ssap)
+        event["l2_details"]["llc_ctrl"] = safe_int(pkt[LLC].ctrl)
+
+    if SNAP in pkt:
+        event["l2_proto"] = event["l2_proto"] or "snap"
+        event["l2_details"]["snap_oui"] = safe_int(pkt[SNAP].OUI)
+        event["l2_details"]["snap_code"] = safe_int(pkt[SNAP].code)
+
+    if EAPOL in pkt:
+        event["protocol"] = "eapol"
+        event["service"] = "eapol"
+        event["category"] = "auth"
+        event["transport"] = "l2"
+        event["l2_proto"] = "eapol"
+        event["summary"] = f"EAPOL from {event.get('src_mac')} to {event.get('dst_mac')}"
+        return event
 
     l2_event = detect_l2_control(pkt)
 

@@ -6,20 +6,33 @@ import ipaddress
 import threading
 import subprocess
 import re
+import uuid
 from session_manager import get_current_state_path
 from identity import build_device_identity
 
-
 STATE_LOCK = threading.RLock()
 LAST_GOOD_STATE = None
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 RECENT_FLOW_WINDOW_SECONDS = 1800
 MAX_EVENTS = None
 RDNS_RETRY_SECONDS = 3600
 
 VPN_PROXY_PORTS = {1080, 1194, 1701, 1723, 3128, 500, 4500, 51820, 8080, 8443}
+
+INFRA_ROUTES = {
+    "local_to_switch",
+    "switch_to_gateway",
+    "gateway_to_switch",
+    "switch_to_local",
+    "dns_to_switch",
+    "dns_to_gateway",
+}
+
+GATEWAY_EXTERNAL_ROUTES = {
+    "gateway_to_external",
+    "external_to_gateway",
+    "gateway_to_external_dns",
+}
 
 def get_state_path():
     return get_current_state_path()
@@ -72,6 +85,8 @@ def normalize_state(state):
     state.setdefault("l2_links", {})
     state.setdefault("access_paths", {})
     state.setdefault("default_switch", None)
+    state.setdefault("filters", {})
+    state["filters"].setdefault("show_ipv6", False)
 
     return state
 
@@ -102,11 +117,19 @@ def save_state(state):
 
     state = normalize_state(state)
     state_path = get_state_path()
-    tmp_path = state_path + ".tmp"
+    tmp_path = f"{state_path}.{uuid.uuid4().hex}.tmp"
 
     with STATE_LOCK:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
+
+        for _ in range(5):
+            try:
+                os.replace(tmp_path, state_path)
+                LAST_GOOD_STATE = state
+                return
+            except PermissionError:
+                time.sleep(0.05)
 
         os.replace(tmp_path, state_path)
         LAST_GOOD_STATE = state
@@ -231,11 +254,14 @@ def classify_ip(ip):
         if addr.is_loopback:
             return "loopback"
 
-        if addr.is_private:
-            return "local_device"
-
         if str(addr) == "255.255.255.255":
             return "broadcast"
+
+        if ip.endswith(".255"):
+            return "broadcast"
+
+        if addr.is_private:
+            return "local_device"
 
         return "external_host"
 
@@ -489,12 +515,7 @@ def merge_visual_edges(edges):
         route = data.get("visual_route")
 
         # Only merge internal infrastructure segments.
-        if route not in {
-            "local_to_switch",
-            "switch_to_gateway",
-            "gateway_to_switch",
-            "switch_to_local"
-        }:
+        if route not in INFRA_ROUTES:
             key = f"{e.get('from')}|{e.get('to')}|{e.get('type')}|{route}|{data.get('actual_src')}|{data.get('actual_dst')}"
         else:
             key = f"{e.get('from')}|{e.get('to')}|{route}"
@@ -517,12 +538,7 @@ def merge_visual_edges(edges):
 
         route = cur_data.get("visual_route")
 
-        if route in {
-            "local_to_switch",
-            "switch_to_gateway",
-            "gateway_to_switch",
-            "switch_to_local"
-        }:
+        if route in INFRA_ROUTES:
             cur["type"] = "mixed"
         else:
             cur["type"] = relationship_type(set(cur_data.get("protocols", {}).keys()))
@@ -566,10 +582,40 @@ def make_visual_edges(state, edges, gateway, dns_servers=None, switch_id=None):
         src_type = classify_ip(src)
         dst_type = classify_ip(dst)
 
-        # DNS client -> local DNS server stays direct:
-        # PC -> Pi-hole
-        if etype == "dns" and dst in dns_servers:
-            visual.append(e)
+        # PC -> Switch -> Pi-hole
+        if (
+            switch_id
+            and src_type == "local_device"
+            and dst_type == "local_device"
+            and src != gateway
+            and dst != gateway
+            and get_access_path(state, src) == "switch"
+            and get_access_path(state, dst) == "switch"
+        ):
+            s1 = make_segment_edge(
+                src, switch_id, etype, e,
+                "local_to_switch",
+                actual_src=src,
+                actual_dst=dst,
+                weight_scale=0.6
+            )
+
+            s2 = make_segment_edge(
+                switch_id, dst, etype, e,
+                "switch_to_local",
+                actual_src=src,
+                actual_dst=dst,
+                weight_scale=0.6
+            )
+
+            logical = dict(e)
+            logical["type"] = e.get("type")
+            logical["weight"] = max(0.4, float(e.get("weight", 1) or 1) * 0.35)
+            logical["data"] = dict(e.get("data", {}))
+            logical["data"]["visual_route"] = "logical_direct"
+            logical["data"]["through_switch"] = switch_id
+
+            visual.extend([s1, s2, logical])
             continue
 
         # DNS server -> external DNS goes through gateway:
@@ -1711,6 +1757,13 @@ def build_graph(state):
                 if data.get("visual_route"):
                     gateway_load["external_edges"] += 1
     
+    vlans = set()
+
+    for event in state.get("events", []):
+        for vlan in event.get("vlans", []) or []:
+            if vlan is not None:
+                vlans.add(vlan)
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -1726,6 +1779,7 @@ def build_graph(state):
             "external_boundary": external_boundary_summary(state),
             "dns_servers": dns_servers,
             "default_switch": switch_id,
-            "l2_devices": len(state.get("l2_devices", {}))
+            "l2_devices": len(state.get("l2_devices", {})),
+            "vlans": sorted(vlans)
         }
     }

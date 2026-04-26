@@ -35,11 +35,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def json_response(self, payload, status=200):
         raw = json.dumps(payload, default=str).encode("utf-8")
 
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -164,6 +167,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             save_state(state)
 
             self.json_response({"ok": True, "filters": filters})
+            return
+        
+        if parsed.path == "/access-path/set":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            payload = json.loads(body or "{}")
+
+            ip = payload.get("ip")
+            path_value = payload.get("path")
+
+            if not ip:
+                self.json_response({"error": "ip required"}, status=400)
+                return
+
+            if path_value not in {"switch", "gateway", None, ""}:
+                self.json_response({"error": "path must be switch, gateway, or empty"}, status=400)
+                return
+
+            state = load_state()
+            access_paths = state.setdefault("access_paths", {})
+
+            if path_value:
+                access_paths[ip] = path_value
+            else:
+                access_paths.pop(ip, None)
+
+            from graph_builder import save_state
+            save_state(state)
+
+            self.json_response({"ok": True, "ip": ip, "path": path_value or None})
             return
 
         self.json_response({"error": "not found"}, status=404)

@@ -31,8 +31,13 @@ def handle_packet(packet):
 def start_capture(interface=None):
     print("Packet capture loop loaded...")
 
-    sniff(
-        iface=interface,
-        prn=handle_packet,
-        store=False
-    )
+    try:
+        sniff(
+            iface=interface,
+            prn=handle_packet,
+            store=False
+        )
+    except PermissionError:
+        print("Capture permission error. Run as Administrator/root.")
+    except Exception as e:
+        print("Capture failed:", e)

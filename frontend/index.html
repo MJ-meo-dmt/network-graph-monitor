@@ -195,6 +195,7 @@ button {
     cursor: pointer;
     border-radius: 8px;
     font-weight: 700;
+    transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
 
 button:hover {
@@ -209,6 +210,57 @@ button.primary {
 button.danger {
     background: var(--danger);
     color: white;
+}
+
+button:active {
+    transform: scale(0.94);
+    filter: brightness(1.25);
+}
+
+button.busy {
+    opacity: 0.75;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px rgba(96,165,250,0.35);
+}
+
+button.flash {
+    animation: buttonFlash 0.35s ease;
+}
+
+@keyframes buttonFlash {
+    0% { transform: scale(1); filter: brightness(1); }
+    40% { transform: scale(0.92); filter: brightness(1.45); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+#capture-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    border: 1px solid rgba(255,255,255,0.12);
+}
+
+#capture-status.running {
+    color: #bbf7d0;
+    background: rgba(34,197,94,0.16);
+    border-color: rgba(34,197,94,0.35);
+}
+
+#capture-status.paused {
+    color: #fde68a;
+    background: rgba(251,191,36,0.16);
+    border-color: rgba(251,191,36,0.35);
+}
+
+#capture-status.stopped,
+#capture-status.unknown {
+    color: #fecdd3;
+    background: rgba(244,63,94,0.16);
+    border-color: rgba(244,63,94,0.35);
 }
 
 .row {
@@ -317,9 +369,9 @@ input[type="checkbox"] {
             <button onclick="clearSelection()">Clear Selection</button>
         </div>
         <div class="row control-group">
-            <button class="primary" onclick="startCapture()">Start</button>
-            <button onclick="pauseCapture()">Pause</button>
-            <button class="danger" onclick="stopCapture()">Stop</button>
+            <button id="btn-start" class="primary" onclick="startCapture()">Start</button>
+            <button id="btn-pause" onclick="pauseCapture()">Pause</button>
+            <button id="btn-stop" class="danger" onclick="stopCapture()">Stop</button>
             <button onclick="newSession()">New Session</button>
         </div>
 
@@ -458,7 +510,12 @@ const TCP_SERVICES = new Set([
     "postgres",
     "oracle",
     "nfs",
-    "rtsp"
+    "rtsp",
+    "socks-proxy",
+    "http-proxy",
+    "redis",
+    "elasticsearch",
+    "mongodb"
 ]);
 
 const UDP_SERVICES = new Set([
@@ -479,7 +536,15 @@ const UDP_SERVICES = new Set([
     "netbios-dgm",
     "bacnet",
     "omron-fins",
-    "ethernet-ip-implicit"
+    "ethernet-ip-implicit",
+    "ws-discovery",
+    "mdns",
+    "radius",
+    "radius-acct",
+    "sip",
+    "sips",
+    "ike",
+    "ipsec-nat-t"
 ]);
 
 let camera = JSON.parse(localStorage.getItem("nm:camera") || JSON.stringify({
@@ -513,6 +578,31 @@ function captureCurrentLayout() {
     });
 
     return layout;
+}
+
+function flashButton(id) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+
+    btn.classList.remove("flash");
+    void btn.offsetWidth;
+    btn.classList.add("flash");
+}
+
+function setCaptureStatusVisual(status) {
+    const el = document.getElementById("capture-status");
+    if (!el) return;
+
+    el.classList.remove("running", "paused", "stopped", "unknown");
+    el.classList.add(status || "unknown");
+
+    const icon =
+        status === "running" ? "●" :
+        status === "paused" ? "Ⅱ" :
+        status === "stopped" ? "■" :
+        "?";
+
+    el.innerText = `${icon} ${status || "unknown"}`;
 }
 
 function exportLayout() {
@@ -1304,9 +1394,10 @@ function syncNodes() {
             data: {
                 ip: "__local_anchor__",
                 identity: {
-                    label_line_1: "Local",
-                    label_line_2: "LAN gravity anchor"
-                }
+                    label_line_1: "Local Network",
+                    label_line_2: "LAN summary"
+                },
+                summary_node: true
             }
         };
     }
@@ -1472,6 +1563,21 @@ function syncPinButton() {
 /* -----------------------------
    UI actions
 ------------------------------ */
+async function setAccessPathForSelected(path) {
+    if (!selectedNode) return;
+
+    await fetch("/access-path/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            ip: selectedNode.id,
+            path
+        })
+    });
+
+    await fetchGraph();
+}
+
 function collectServicesFromGraph() {
     const services = new Set();
 
@@ -1629,11 +1735,6 @@ async function clearGateway() {
     await fetchGraph();
 }
 
-async function stopCapture() {
-    await fetch("/capture/stop", { method: "POST" });
-    await refreshCaptureStatus();
-}
-
 async function newSession() {
     await fetch("/sessions/new", { method: "POST" });
 
@@ -1693,12 +1794,20 @@ async function loadSelectedSession() {
 }
 
 async function startCapture() {
+    flashButton("btn-start");
     await fetch("/capture/start", { method: "POST" });
     await refreshCaptureStatus();
 }
 
 async function pauseCapture() {
+    flashButton("btn-pause");
     await fetch("/capture/pause", { method: "POST" });
+    await refreshCaptureStatus();
+}
+
+async function stopCapture() {
+    flashButton("btn-stop");
+    await fetch("/capture/stop", { method: "POST" });
     await refreshCaptureStatus();
 }
 
@@ -1707,11 +1816,9 @@ async function refreshCaptureStatus() {
         const res = await fetch("/capture/status");
         const data = await res.json();
 
-        document.getElementById("capture-status").innerText =
-            `[${data.capture}]`;
+        setCaptureStatusVisual(data.capture);
     } catch {
-        document.getElementById("capture-status").innerText =
-            "[unknown]";
+        setCaptureStatusVisual("unknown");
     }
 }
 
@@ -2384,12 +2491,36 @@ function showNodeInfo(n) {
     const data = n.data || {};
     const flags = data.flags || [];
 
+    if (n.id === "__local_anchor__") {
+        const stats = graph.stats || {};
+        const nat = stats.nat || {};
+        const gw = stats.gateway || "unknown";
+        const vlans = stats.vlans || [];
+        const broadcasts = graph.nodes.filter(x => x.group === "broadcast").length;
+        const multicasts = graph.nodes.filter(x => x.group === "multicast").length;
+        const locals = graph.nodes.filter(x => x.group === "local_device").length;
+
+        document.getElementById("info").innerHTML = `
+            <b>Local Network</b><br>
+            <span class="muted">LAN summary</span>
+            <hr>
+            <div class="kv"><div class="k">Gateway</div><div>${gw}</div></div>
+            <div class="kv"><div class="k">Local devices</div><div>${locals}</div></div>
+            <div class="kv"><div class="k">Broadcast nodes</div><div>${broadcasts}</div></div>
+            <div class="kv"><div class="k">Multicast nodes</div><div>${multicasts}</div></div>
+            <div class="kv"><div class="k">NAT</div><div>${nat.likely_nat ? "likely" : "unknown"}</div></div>
+            <div class="kv"><div class="k">NAT clients</div><div>${nat.local_clients || 0}</div></div>
+            <div class="kv"><div class="k">External targets</div><div>${nat.external_targets || 0}</div></div>
+            <div class="kv"><div class="k">VLANs</div><div>${vlans.length ? vlans.join(", ") : "none seen"}</div></div>
+        `;
+        return;
+    }
+
     document.getElementById("info").innerHTML = `
         <b>${n.label}</b><br>
         <span class="muted">${n.group}</span>
         ${n.pinned ? `<span class="badge">pinned</span>` : ""}
         <hr>
-
         <div class="kv"><div class="k">IP</div><div>${data.ip || n.id}</div></div>
         <div class="kv"><div class="k">Identity</div><div>${data.identity?.label_line_1 || "unknown"}</div></div>
         <div class="kv"><div class="k">Role</div><div>${data.identity?.role || "unknown"}</div></div>
@@ -2402,6 +2533,13 @@ function showNodeInfo(n) {
         <div class="kv"><div class="k">Name</div><div>${data.display_name || n.label || n.id}</div></div>
         <div class="kv"><div class="k">MAC</div><div>${data.mac || "unknown"}</div></div>
         <div class="kv"><div class="k">Access path</div><div>${data.access_path || "unknown"}</div></div>
+        ${["local_device", "gateway"].includes(n.group) ? `
+            <div class="row">
+                <button onclick="setAccessPathForSelected('switch')">Set Switch Path</button>
+                <button onclick="setAccessPathForSelected('gateway')">Set Gateway Path</button>
+            </div>
+            <button onclick="setAccessPathForSelected(null)">Auto Access Path</button>
+        ` : ""}
         <div class="kv"><div class="k">Packets</div><div>${data.packets || 0}</div></div>
         <div class="kv"><div class="k">Bytes</div><div>${data.bytes || 0}</div></div>
         <div class="kv"><div class="k">Importance</div><div>${(data.importance || 0).toFixed(2)}</div></div>
