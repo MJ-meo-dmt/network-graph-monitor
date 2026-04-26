@@ -203,7 +203,5 @@ def run_server():
 if __name__ == "__main__":
     capture_thread = threading.Thread(target=start_capture, daemon=True)
     capture_thread.start()
-
-    print("Frontend dir:", FRONTEND_DIR)
-    print("Index exists:", os.path.exists(os.path.join(FRONTEND_DIR, "index.html")))
+    
     run_server()

@@ -29,7 +29,7 @@ def handle_packet(packet):
 
 
 def start_capture(interface=None):
-    print("Packet capture loop loaded...")
+    print("Packet capture loop started")
 
     try:
         sniff(
