@@ -36,7 +36,8 @@ current_session.txt
 *.cap
 
 # Local data files
-backend/oui.csv
+# OUI dataset
+data/oui/oui.csv
 oui.csv
 
 # IDE/editor
