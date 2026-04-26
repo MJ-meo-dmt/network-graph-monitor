@@ -1,33 +1,99 @@
 # Network Graph Monitor
 
-A local network monitoring and visualization tool built with Python, Scapy, and a browser-based canvas UI.
+A topology-aware, behavior-aware network visualization and analysis tool built with Python, Scapy, and a browser-based canvas UI.
 
-The tool captures packets from the local machine, analyzes network activity, and renders an interactive live graph showing devices, traffic flows, protocols, services, gateway routing, switch/L2 hints, multicast activity, and suspicious behavior indicators.
+The tool captures packets from a local interface or mirrored/SPAN port, analyzes network activity, and renders an interactive live graph showing devices, traffic flows, protocols, services, and network structure.
 
-## Features
+It models real-world network behavior including gateway routing, switch/L2 paths, multicast and broadcast traffic, DNS resolution, and connection-level activity, providing both a high-level topology view and detailed per-connection insight.
+
+`Designed for network engineers and security analysts in lab and local environments.`
+
+*Packets → Analyzer → State → Graph Builder → UI*
+
+## Features 
 
 - Live packet capture using Scapy
-- Interactive browser-based network graph
-- Local, external, gateway, multicast, broadcast, and switch/L2 node grouping
-- Protocol and service detection:
-  - ARP, DNS, ICMP, TCP, UDP
-  - HTTP, TLS, QUIC, SMB, RDP, SSH, DHCP, SNMP, and others
-  - Basic OT/ICS protocol hints such as Modbus, S7, BACnet, OPC-UA
-- Layer 2 detection for traffic such as STP/CDP-style packets
+- Interactive browser-based network graph with real-time updates
+
+### Network Topology & Visualization
+- Automatic grouping of:
+  - Local devices
+  - External hosts
+  - Gateway
+  - Switch / Layer 2 nodes
+  - Multicast and broadcast nodes
 - Gateway-aware visual routing:
   - Local → Switch → Gateway → External
-- Optional logical edges for actual source/destination visibility
+- Logical edges (optional) showing actual source/destination paths
+- Interactive connection tracing across multi-hop paths
+  - Select a connection to highlight its full path across hops
+
+### Protocol, Service & Traffic Analysis
+- Protocol detection:
+  - ARP, DNS, ICMP, TCP, UDP, QUIC, TLS, HTTP, and more
+- Service detection via port mapping:
+  - Web, DNS, SMB, RDP, SSH, DHCP, SNMP, databases, VoIP, etc.
+- Extended OT/ICS protocol hints:
+  - Modbus, S7, BACnet, OPC-UA, Ethernet/IP, DNP3, and others
+- DNS-aware analysis:
+  - Separation of DNS queries vs resolved hostnames
+  - Domain attribution only where resolution is confirmed
+
+### Layer 2 Awareness
+- Detection of L2 control traffic:
+  - STP / RSTP / MSTP
+  - CDP, LLDP, VTP
+  - LACP
+- VLAN (802.1Q) detection and tagging
+- EAPOL / 802.1X authentication visibility
+- LLC / SNAP frame inspection
+
+### Filtering & Exploration
+- Protocol-based filtering (TCP/UDP + higher-level protocols)
+- Service-based filtering (dropdown)
+- IPv6 show/hide toggle
+- Edge label visibility toggle
+- Logical edge visibility toggle
+- Gateway ↔ external edge toggles
+- Search filters:
+  - IP
+  - Port
+  - Service
+
+### Visual Clarity & Layout
 - Edge display modes:
   - Normal
-  - Quiet low-volume
-  - Highlight top talkers
+  - Quiet (volume-based fading)
+  - Top talkers
   - Backbone emphasis
-- IPv6 show/hide toggle
 - Multicast anchor to reduce layout clutter
-- Vendor lookup using IEEE OUI CSV
+- Local anchor with LAN summary:
+  - Gateway
+  - Device counts
+  - NAT indicators
+  - VLAN visibility
+- Collapsible and resizable UI panels
+- Export / import UI layouts
+
+### Data & State Management
 - Session-based capture history
-- Basic risk/suspicious node scoring with visible findings
-- Export/import UI layouts
+- Automatic session creation and switching
+- Persistent UI layout and panel state
+
+### Enrichment & Analysis
+- Vendor lookup via IEEE OUI database
+- Basic risk / suspicious behavior scoring
+- Connection-level breakdown per visual edge
+- Domain filtering (noise reduction for reverse DNS)
+  - Domain filtering (hides reverse DNS noise such as in-addr.arpa / ip6.arpa)
+
+## Use Cases
+
+- Visualizing network topology in lab environments
+- Investigating unexpected network behavior
+- Understanding application communication patterns
+- Identifying noisy or suspicious devices
+- Observing DNS and service usage patterns
 
 ## Requirements
 
@@ -46,8 +112,10 @@ Network_graph/
 │  ├─ graph_builder.py
 │  ├─ identity.py
 │  ├─ session_manager.py
-│  ├─ oui.csv
 │  └─ sessions/
+├─ data/
+│  └─ oui/
+│      └─ oui.csv
 ├─ frontend/
 │  ├─ index.html
 │  └─ layouts/
@@ -84,7 +152,7 @@ The tool can use the IEEE OUI CSV file for MAC vendor lookup.
 Expected location:
 
 ```bash
-backend/oui.csv
+data/oui/oui.csv
 ```
 This file is ignored by Git because it is large and can be downloaded separately.
 
@@ -93,7 +161,7 @@ This file is ignored by Git because it is large and can be downloaded separately
 ## Running
 
 ### From the project root:
-`Run terminal as Administrator`
+`⚠️ Run the terminal as Administrator (required for packet capture on Windows)`
 ```bash
 python backend/server.py
 ```
@@ -118,7 +186,7 @@ Start capture from the UI.
 
 `Experimental / lab tool.`
 
-The goal is not to *replace* Wireshark, but to provide a quick visual overview of network activity.
+The goal is not to *replace* Wireshark, but to provide a topology-aware visual understanding of network behavior and communication patterns.
 
 ## Packet Capture Notes
 
@@ -144,6 +212,11 @@ The goal is not to *replace* Wireshark, but to provide a quick visual overview o
 ## License
 
 This project is licensed under the MIT License.
+
+## Acknowledgements
+
+Parts of the implementation and iteration process were assisted by AI tooling.
+All design decisions, integration, and validation were performed by the author.
 
 ## Preview
 
