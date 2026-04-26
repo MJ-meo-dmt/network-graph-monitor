@@ -78,7 +78,18 @@ def clean_l2_name(value):
     if not all((c.isalnum() or c in "-_./") for c in value):
         return None
 
-    bad = {"cisco", "version", "port", "platform", "capabilities"}
+    bad = {
+        "cisco",
+        "version",
+        "port",
+        "platform",
+        "capabilities",
+        "internetwork",
+        "switch",
+        "router",
+        "transparent",
+        "bridge",
+    }
     if value.lower() in bad:
         return None
 
@@ -122,7 +133,18 @@ def detect_l2_control(pkt):
         if not any(c.isalpha() for c in token):
             continue
 
-        bad = ("cisco", "version", "port", "platform", "capabilities")
+        bad = (
+            "cisco",
+            "version",
+            "port",
+            "platform",
+            "capabilities",
+            "internetwork",
+            "switch",
+            "router",
+            "transparent",
+            "bridge",
+        )
         if token.lower().startswith(bad):
             continue
 

@@ -92,6 +92,16 @@ def clean_name(name):
 
     return name
 
+def is_l2_switch_like(device, group):
+    protocols = device.get("protocols", {}) or {}
+
+    if group == "switch":
+        return True
+
+    return any(
+        protocols.get(p, 0) > 0
+        for p in ("stp", "rstp", "mstp", "cdp", "lldp", "vtp", "cisco_l2", "lacp")
+    )
 
 def guess_vendor(mac, oui_map=None):
     if not mac:
@@ -109,6 +119,9 @@ def guess_os(device):
     protocols = device.get("protocols", {}) or {}
     hostname = clean_name(device.get("hostname")) or ""
     mac = str(device.get("mac") or "").upper()
+
+    if any(protocols.get(p, 0) > 0 for p in ("stp", "rstp", "mstp", "cdp", "lldp", "vtp", "cisco_l2", "lacp")):
+        return "Network device", 0.9
 
     scores = {
         "Windows": 0,
@@ -163,6 +176,9 @@ def guess_role(ip, device, group):
     ports = set(device.get("ports", []) or {})
     protocols = device.get("protocols", {}) or {}
 
+    if group == "switch" or any(protocols.get(p, 0) > 0 for p in ("stp", "rstp", "mstp", "cdp", "lldp", "vtp", "cisco_l2", "lacp")):
+        return "Network switch"
+
     if group == "gateway":
         return "Gateway"
 
@@ -188,15 +204,28 @@ def build_device_identity(ip, device, group, state):
     mac = device.get("mac")
 
     vendor = guess_vendor(mac, load_oui_map())
+    switch_like = is_l2_switch_like(device, group)
 
     if group == "external_host":
         vendor = None
         name = dns_answer_name or hostname or ip
+    elif switch_like:
+        if hostname:
+            name = hostname
+        elif vendor:
+            name = f"{vendor} switch"
+        else:
+            name = "Network switch"
     else:
         name = hostname or ip
 
     os_guess, os_confidence = guess_os(device)
     role = guess_role(ip, device, group)
+
+    if switch_like:
+        role = "Network switch"
+        os_guess = "Network device"
+        os_confidence = max(os_confidence, 0.9)
 
     meta = []
 
@@ -225,6 +254,18 @@ def build_device_identity(ip, device, group, state):
 
     if os_guess:
         confidence += os_confidence * 0.2
+
+    if switch_like:
+        protocols = device.get("protocols", {}) or {}
+
+        if protocols.get("stp", 0) > 0:
+            confidence += 0.25
+
+        if protocols.get("cdp", 0) > 0 or protocols.get("lldp", 0) > 0:
+            confidence += 0.25
+
+        if protocols.get("vtp", 0) > 0 or protocols.get("cisco_l2", 0) > 0 or protocols.get("lacp", 0) > 0:
+            confidence += 0.15
 
     confidence = min(1.0, confidence)
 

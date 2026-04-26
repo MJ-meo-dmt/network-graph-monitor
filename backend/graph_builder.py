@@ -1042,7 +1042,21 @@ def update_l2_state(state, event):
     dev["packets"] = int(dev.get("packets", 0) or 0) + 1
     dev["bytes"] = int(dev.get("bytes", 0) or 0) + int(event.get("size", 0) or 0)
 
-    if switch_name and (not dev.get("name") or dev["name"].startswith("Switch ")):
+    generic_l2_names = {
+    "internetwork",
+    "switch",
+    "router",
+    "bridge",
+    "network switch",
+    }
+
+    current_name = str(dev.get("name") or "").strip().lower()
+
+    if switch_name and (
+        not dev.get("name")
+        or dev["name"].startswith("Switch ")
+        or current_name in generic_l2_names
+    ):
         dev["name"] = switch_name
 
     protocols = dev.setdefault("protocols", {})
@@ -1739,29 +1753,57 @@ def build_graph(state):
         })
 
     for node_id, l2 in state.get("l2_devices", {}).items():
+        l2_device = {
+            "id": node_id,
+            "ip": node_id,
+            "mac": l2.get("mac"),
+            "hostname": l2.get("name"),
+            "protocols": l2.get("protocols", {}),
+            "services": {},
+            "categories": {"layer2_control": sum((l2.get("protocols", {}) or {}).values())},
+            "ports": [],
+            "packets": l2.get("packets", 0),
+            "bytes": l2.get("bytes", 0),
+            "first_seen": l2.get("first_seen"),
+            "last_seen": l2.get("last_seen"),
+            "flags": []
+        }
+
+        identity = build_device_identity(node_id, l2_device, "switch", state)
+
         nodes.append({
             "id": node_id,
-            "label": l2.get("name") or node_id,
+            "label": identity["label_line_1"],
             "group": "switch",
             "data": {
-                "ip": None,
+                "ip": node_id,
                 "mac": l2.get("mac"),
                 "kind": l2.get("kind"),
-                "role": "Layer 2 switch",
-                "vendor": "Cisco" if l2.get("mac", "").lower().startswith("00:0d:bd") else None,
+                "role": identity.get("role"),
+                "vendor": identity.get("vendor"),
+                "os": identity.get("os"),
+                "display_name": identity.get("name"),
+                "hostname": identity.get("hostname"),
+                "domain": None,
+                "dns_answer_name": None,
+                "access_path": "switch",
                 "protocols": l2.get("protocols", {}),
+                "services": {},
+                "categories": l2_device["categories"],
                 "interfaces": l2.get("interfaces", {}),
+                "ports": [],
                 "packets": l2.get("packets", 0),
                 "bytes": l2.get("bytes", 0),
                 "first_seen": l2.get("first_seen"),
                 "last_seen": l2.get("last_seen"),
-                "identity": {
-                    "label_line_1": l2.get("name") or "L2 Switch",
-                    "label_line_2": l2.get("mac") or "Layer 2"
-                },
+                "identity": identity,
                 "importance": 4,
                 "risk": 0,
-                "flags": []
+                "flags": [],
+                "target_count": 0,
+                "scan_port_count": 0,
+                "external_target_count": 0,
+                "dns_domain_count": 0
             }
         })
 
