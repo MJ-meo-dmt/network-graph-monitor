@@ -1,23 +1,15 @@
 import json
-import os, sys
+import os
 import threading
 import http.server
 import socketserver
 from urllib.parse import urlparse
+from config import APP_PORT, frontend_path
 from capture import start_capture, set_capture_enabled, get_capture_enabled
 from graph_builder import build_graph, load_state
 from session_manager import new_session, list_sessions, set_current_session
 
-PORT = 8000
-
-def resource_path(relative_path):
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), relative_path)
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND_DIR = resource_path("frontend")
+FRONTEND_DIR = frontend_path()
 
 class ThreadingHTTPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
@@ -203,8 +195,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def run_server():
-    with ThreadingHTTPServer(("", PORT), Handler) as httpd:
-        print(f"Network Map running on http://localhost:{PORT}")
+    with ThreadingHTTPServer(("", APP_PORT), Handler) as httpd:
+        print(f"Network Map running on http://localhost:{APP_PORT}")
         httpd.serve_forever()
 
 

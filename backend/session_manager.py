@@ -1,12 +1,7 @@
 import json
 import os
-import time
 from datetime import datetime
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SESSIONS_DIR = os.path.join(BASE_DIR, "backend", "sessions")
-CURRENT_SESSION_PATH = os.path.join(SESSIONS_DIR, "current_session.txt")
-
+from config import SESSIONS_DIR, CURRENT_SESSION_PATH
 
 def ensure_sessions_dir():
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -36,8 +31,11 @@ def empty_state():
         "gateway_override": None,
         "l2_devices": {},
         "l2_links": {},
+        "access_paths": {},
         "default_switch": None,
-        "access_paths": {}
+        "filters": {
+            "show_ipv6": False
+        }
     }
 
 

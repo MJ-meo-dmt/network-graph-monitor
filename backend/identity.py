@@ -1,38 +1,16 @@
 import re
 import csv
 import os
-import sys
-
-PORT_ROLE_HINTS = {
-    53: "DNS server",
-    67: "DHCP server",
-    80: "Web device",
-    443: "Web device",
-    445: "Windows/SMB device",
-    139: "Windows/NetBIOS device",
-    3389: "Windows/RDP device",
-    9100: "Printer",
-    515: "Printer",
-    631: "Printer",
-    22: "SSH device",
-    23: "Telnet device",
-    554: "Camera/RTSP device",
-    1900: "UPnP device",
-}
-
-WINDOWS_PORTS = {135, 137, 138, 139, 445, 3389}
-LINUX_PORTS = {22, 111, 2049}
-PRINTER_PORTS = {515, 631, 9100}
-CAMERA_PORTS = {554, 8000, 8080}
+from config import oui_csv_path
+from net_ports import (
+    PORT_ROLE_HINTS,
+    WINDOWS_PORTS,
+    LINUX_PORTS,
+    PRINTER_PORTS,
+    CAMERA_PORTS,
+)
 
 OUI_CACHE = None
-
-def resource_path(relative_path):
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_dir, relative_path)
 
 def normalize_oui_prefix(value):
     if not value:
@@ -68,7 +46,7 @@ def load_oui_map():
     if OUI_CACHE is not None:
         return OUI_CACHE
 
-    path = resource_path("data/oui/oui.csv")
+    path = oui_csv_path()
     mapping = {}
 
     if not os.path.exists(path):

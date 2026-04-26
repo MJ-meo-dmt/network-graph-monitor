@@ -9,6 +9,7 @@ import re
 import uuid
 from session_manager import get_current_state_path
 from identity import build_device_identity
+from net_ports import VPN_PROXY_PORTS
 
 STATE_LOCK = threading.RLock()
 LAST_GOOD_STATE = None
@@ -16,8 +17,6 @@ LAST_GOOD_STATE = None
 RECENT_FLOW_WINDOW_SECONDS = 1800
 MAX_EVENTS = None
 RDNS_RETRY_SECONDS = 3600
-
-VPN_PROXY_PORTS = {1080, 1194, 1701, 1723, 3128, 500, 4500, 51820, 8080, 8443}
 
 INFRA_ROUTES = {
     "local_to_switch",
@@ -958,7 +957,6 @@ def make_visual_edges(state, edges, gateway, dns_servers=None, switch_id=None):
             visual.extend([s1, s2])
             continue
 
-
         # Gateway -> local device should visually pass through switch
         if (
             switch_id
@@ -1321,6 +1319,7 @@ def add_flag(device, flag):
         flags.append(flag)
 
 
+# Not working will come back to this maybe
 def prune_old_flows(state, now):
     return
     #flows = state.get("flows", {})
