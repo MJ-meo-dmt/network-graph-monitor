@@ -1,60 +1,60 @@
 {
   "version": 1,
-  "exported_at": "2026-04-26T09:09:02.648Z",
+  "exported_at": "2026-04-26T22:10:42.195Z",
   "layout": {
     "control-panel": {
-      "left": "0px",
-      "top": "3px",
+      "left": "-1px",
+      "top": "741px",
       "right": "auto",
-      "width": "385px",
-      "height": "182px"
+      "width": "377px",
+      "height": "183px"
     },
     "filter-panel": {
-      "left": "1480px",
-      "top": "5px",
+      "left": "1483px",
+      "top": "8px",
       "right": "auto",
-      "width": "220px",
-      "height": "510px"
+      "width": "215px",
+      "height": "511px"
     },
     "main-panel": {
-      "left": "2px",
-      "top": "187px",
+      "left": "0px",
+      "top": "2px",
       "right": "auto",
-      "width": "379px",
-      "height": "738px"
+      "width": "375px",
+      "height": "737px"
     },
     "stats-panel": {
-      "left": "1700px",
+      "left": "1703px",
       "top": "6px",
       "right": "auto",
-      "width": "219px",
-      "height": "508px"
+      "width": "216px",
+      "height": "513px"
     },
     "events-panel": {
-      "left": "1479px",
-      "top": "517px",
+      "left": "1488px",
+      "top": "522px",
       "right": "auto",
-      "width": "438px",
-      "height": "404px"
+      "width": "432px",
+      "height": "403px"
     }
   },
   "camera": {
-    "x": 825.7721179412064,
-    "y": 436.97352660304665,
-    "zoom": 0.7885397611276755
+    "x": 927.8765111511125,
+    "y": 411.93621996016304,
+    "zoom": 0.7325050714627891
   },
   "pinnedNodePositions": {
     "__external_anchor__": {
-      "x": 1276.1663281822373,
-      "y": -219.31067934325307
+      "x": 960.8970064287977,
+      "y": -127.8750803369858
     },
     "__local_anchor__": {
-      "x": -426.5130775091468,
-      "y": 175.3173669143422
+      "x": -543.8665534537517,
+      "y": 36.7317322761077
     },
     "__multicast_anchor__": {
-      "x": -162.41958175767482,
-      "y": 749.2390133168716
+      "x": -528.6128253301927,
+      "y": -244.12376790805752
     }
   }
 }

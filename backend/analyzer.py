@@ -1,10 +1,21 @@
 import time
 from scapy.all import IP, IPv6, Ether, TCP, UDP, DNS, DNSQR, ARP, ICMP
 from scapy.all import Dot3, LLC, SNAP, Dot1Q
-from scapy.layers.l2 import STP
+from scapy.layers.l2 import STP 
+from scapy.contrib.lldp import LLDPDU
 from scapy.layers.eap import EAPOL
 from scapy.all import NBNSQueryRequest, NBNSQueryResponse
 from net_ports import SERVICE_PORTS
+
+try:
+    from scapy.contrib.cdp import (
+        CDPMsgDeviceID,
+        CDPMsgPortID,
+        CDPMsgPlatform,
+        CDPMsgCapabilities,
+    )
+except Exception:
+    CDPMsgDeviceID = CDPMsgPortID = CDPMsgPlatform = CDPMsgCapabilities = None
 
 
 L2_PROTOCOL_MACS = {
@@ -45,6 +56,81 @@ def l2_category_for_proto(proto):
 
     return "layer2"
 
+def clean_l2_value(value):
+    if value is None:
+        return None
+
+    if isinstance(value, bytes):
+        value = value.decode(errors="ignore")
+
+    value = str(value).strip().strip(".").replace("\x00", "")
+
+    # Clean stringified bytes like: b'FastEthernet0/3'
+    if value.startswith("b'") and value.endswith("'"):
+        value = value[2:-1]
+
+    if value.startswith('b"') and value.endswith('"'):
+        value = value[2:-1]
+
+    return value.strip() or None
+
+def extract_l2_metadata(pkt):
+    meta = {}
+
+    # --- LLDP ---
+    if pkt.haslayer(LLDPDU):
+        lldp = pkt[LLDPDU]
+
+        try:
+            for tlv in lldp.tlvlist:
+                t = getattr(tlv, "type", None)
+
+                # System Name
+                if t == 5:
+                    meta["hostname"] = clean_l2_name(str(tlv.value))
+
+                # Port ID
+                elif t == 2:
+                    meta["port_id"] = str(tlv.value)
+
+                # System Description (often contains platform)
+                elif t == 6:
+                    desc = str(tlv.value)
+                    meta["platform"] = clean_l2_name(desc)
+
+                # Capabilities
+                elif t == 7:
+                    meta["capabilities"] = str(tlv.value)
+
+        except Exception:
+            pass
+
+    # --- CDP (fallback parse) ---
+    if CDPMsgDeviceID and pkt.haslayer(CDPMsgDeviceID):
+        try:
+            meta["hostname"] = clean_l2_name(pkt[CDPMsgDeviceID].val)
+        except Exception:
+            pass
+
+    if CDPMsgPortID and pkt.haslayer(CDPMsgPortID):
+        try:
+            meta["port_id"] = clean_l2_value(pkt[CDPMsgPortID].iface)
+        except Exception:
+            pass
+
+    if CDPMsgPlatform and pkt.haslayer(CDPMsgPlatform):
+        try:
+            meta["platform"] = clean_l2_value(pkt[CDPMsgPlatform].val)
+        except Exception:
+            pass
+
+    if CDPMsgCapabilities and pkt.haslayer(CDPMsgCapabilities):
+        try:
+            meta["capabilities"] = clean_l2_value(pkt[CDPMsgCapabilities].cap)
+        except Exception:
+            pass
+
+    return meta
 
 def safe_int(value):
     try:
@@ -66,7 +152,9 @@ def clean_l2_name(value):
     if not value:
         return None
 
-    value = str(value).strip().replace("\x00", "")
+    value = clean_l2_value(value)
+    if not value:
+        return None
 
     # Keep only readable names
     if len(value) < 3:
@@ -89,6 +177,7 @@ def clean_l2_name(value):
         "router",
         "transparent",
         "bridge",
+        "operating"
     }
     if value.lower() in bad:
         return None
@@ -144,6 +233,7 @@ def detect_l2_control(pkt):
             "router",
             "transparent",
             "bridge",
+            "operating"
         )
         if token.lower().startswith(bad):
             continue
@@ -285,12 +375,14 @@ def analyze_packet(pkt):
         return event
 
     l2_event = detect_l2_control(pkt)
+    l2_meta = extract_l2_metadata(pkt)
 
     if l2_event:
         event.update(l2_event)
         event["category"] = "layer2"
         event["service"] = l2_event["protocol"]
         event["transport"] = "l2"
+        event["l2_meta"] = l2_meta
         return event
 
     if ARP in pkt:

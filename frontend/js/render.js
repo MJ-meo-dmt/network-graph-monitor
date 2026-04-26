@@ -27,6 +27,36 @@ function edgeColor(type) {
            "rgba(148,163,184,0.35)";
 }
 
+function trafficHeat(n) {
+    const packets = Number(n.data?.packets || 0);
+    const bytes = Number(n.data?.bytes || 0);
+
+    const packetScore = Math.log10(packets + 1) / 2.6;
+    const byteScore = Math.log10(bytes + 1) / 5.2;
+
+    return Math.max(0, Math.min(1, Math.max(packetScore, byteScore)));
+}
+
+function nodeTrafficColor(n) {
+    const base = nodeColor(n.group);
+    const heat = trafficHeat(n);
+
+    if (n.virtual || ["external_anchor", "local_anchor", "multicast_anchor"].includes(n.group)) {
+        return base;
+    }
+
+    // Only external hosts get traffic heat colors.
+    if (n.group === "external_host") {
+        if (heat < 0.80) return "#a3b0c2"; // grey
+        if (heat < 1.0) return "#ffe678"; // blue
+        if (heat < 1.2) return "#fdd948"; // yellow
+        if (heat < 1.4) return "#f38c16";
+        return "#ee3f0a";                  // orange red
+    }
+
+    return base;
+}
+
 function draw() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -61,10 +91,12 @@ function drawBackgroundStars() {
     }
 }
 
-function drawArrowHead(x, y, angle, size, color) {
+function drawArrowHead(x, y, angle, size, color, alpha = 1) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+
+    ctx.globalAlpha *= alpha;
 
     ctx.beginPath();
     ctx.fillStyle = color;
@@ -197,7 +229,7 @@ function drawEdges() {
             2 * (1 - arrowT) * (cy - a.y) +
             2 * arrowT * (b.y - cy);
 
-        drawArrowHead(qx, qy, Math.atan2(ty, tx), Math.max(7, width + 5), ctx.strokeStyle);
+        drawArrowHead(qx, qy, Math.atan2(ty, tx), Math.max(13, width + 8), ctx.strokeStyle, 0.95);
         ctx.shadowBlur = 0;
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
@@ -233,7 +265,7 @@ function drawNodes() {
         if (!nodeVisible(n)) continue;
 
         const radius = getRadius(n);
-        const color = nodeColor(n.group);
+        const color = nodeTrafficColor(n);
 
         ctx.shadowColor = color;
         ctx.shadowBlur = selectedNode === n ? 24 : 10 + (n.pulse || 0) * 10;
@@ -303,7 +335,7 @@ function edgeVolumeScore(e) {
     return packets + (bytes / 1500);
 }
 
-function topTalkerThreshold() {
+function topTalkerThreshold(topN) {
     const scores = getVisibleEdges()
         .map(edgeVolumeScore)
         .filter(v => v > 0)
@@ -311,7 +343,7 @@ function topTalkerThreshold() {
 
     if (!scores.length) return Infinity;
 
-    return scores[Math.min(9, scores.length - 1)];
+    return scores[Math.min(topN - 1, scores.length - 1)];
 }
 
 function edgePresentation(e) {
@@ -329,8 +361,34 @@ function edgePresentation(e) {
         alpha *= volumeAlpha;
     }
 
-    if (mode === "top") {
-        const threshold = topTalkerThreshold();
+    if (mode === "top-5") {
+        const threshold = topTalkerThreshold(5);
+        const isTop = edgeVolumeScore(e) >= threshold;
+
+        if (isTop) {
+            alpha = 1;
+            widthBoost = 1.3;
+            glow = true;
+        } else {
+            alpha *= 0.18;
+        }
+    }
+
+    if (mode === "top-10") {
+        const threshold = topTalkerThreshold(10);
+        const isTop = edgeVolumeScore(e) >= threshold;
+
+        if (isTop) {
+            alpha = 1;
+            widthBoost = 1.3;
+            glow = true;
+        } else {
+            alpha *= 0.18;
+        }
+    }
+
+    if (mode === "top-20") {
+        const threshold = topTalkerThreshold(20);
         const isTop = edgeVolumeScore(e) >= threshold;
 
         if (isTop) {
