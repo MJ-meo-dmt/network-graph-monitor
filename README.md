@@ -107,6 +107,8 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 Network_graph/
 ├─ backend/
 │  ├─ server.py
+│  ├─ config.py
+│  ├─ net_ports.py
 │  ├─ capture.py
 │  ├─ analyzer.py
 │  ├─ graph_builder.py
@@ -118,7 +120,21 @@ Network_graph/
 │      └─ oui.csv
 ├─ frontend/
 │  ├─ index.html
-│  └─ layouts/
+│  ├─ layouts/
+│  │   └─ default_layout.json
+│  ├─ css/
+│  │   └─ app.css
+│  └─ js/
+│      ├─ state.js
+│      ├─ api.js
+│      ├─ utils.js
+│      ├─ filters.js
+│      ├─ panels.js
+│      ├─ canvas.js
+│      ├─ physics.js
+│      ├─ render.js
+│      ├─ ui.js
+│      └─ app.js
 ├─ requirements.txt
 ├─ .gitignore
 └─ README.md
