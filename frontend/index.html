@@ -172,6 +172,31 @@ body {
     padding-right: 4px;
 }
 
+.panel-collapse {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.panel.collapsed {
+    height: 42px !important;
+    min-height: 42px;
+    overflow: hidden;
+}
+
+.panel.collapsed .panel-body,
+.panel.collapsed .resize-handle {
+    display: none;
+}
+
+.panel.collapsed .panel-header {
+    margin-bottom: 0;
+}
+
 #stats-panel {
     top: 20px;
     left: 365px;
@@ -344,6 +369,15 @@ input[type="checkbox"] {
 .kv .k {
     color: var(--muted);
 }
+
+.connection-line {
+    cursor: pointer;
+}
+
+.connection-line:hover {
+    border-color: rgba(96,165,250,0.55);
+    background: rgba(96,165,250,0.12);
+}
 </style>
 </head>
 
@@ -355,6 +389,7 @@ input[type="checkbox"] {
     <div class="panel-header">
         <div class="panel-title">Controls</div>
         <div class="muted" id="graph-view-state">zoom 1.00</div>
+        <button class="panel-collapse" onclick="togglePanelCollapse(event, 'control-panel')">−</button>
     </div>
 
     <div class="panel-body">
@@ -387,6 +422,7 @@ input[type="checkbox"] {
 <div class="panel" id="filter-panel">
     <div class="panel-header">
         <div class="panel-title">Filters</div>
+        <button class="panel-collapse" onclick="togglePanelCollapse(event, 'filter-panel')">−</button>
     </div>
 
     <div class="panel-body">
@@ -424,7 +460,8 @@ input[type="checkbox"] {
             <option value="top">Highlight top talkers</option>
             <option value="backbone">Backbone emphasis</option>
         </select>
-
+        <label>
+        <input type="checkbox" id="show-edge-labels" checked>Show edge labels</label>
         <label><input type="checkbox" id="show-logical-edges" checked>Show logical edges</label>
         <label><input type="checkbox" id="show-gateway-to-external" checked>Show gateway → external</label>
         <label><input type="checkbox" id="show-external-to-gateway" checked>Show external → gateway</label>
@@ -436,6 +473,7 @@ input[type="checkbox"] {
 <div class="panel" id="main-panel">
     <div class="panel-header">
         <div class="panel-title">Network Map</div>
+        <button class="panel-collapse" onclick="togglePanelCollapse(event, 'main-panel')">−</button>
     </div>
 
     <div class="panel-body">
@@ -450,6 +488,7 @@ input[type="checkbox"] {
 <div class="panel" id="stats-panel">
     <div class="panel-header">
         <div class="panel-title">Stats</div>
+        <button class="panel-collapse" onclick="togglePanelCollapse(event, 'stats-panel')">−</button>
     </div>
 
     <div class="panel-body" id="stats-content">
@@ -463,6 +502,7 @@ input[type="checkbox"] {
     <div class="panel-header">
         <div class="panel-title">Recent Packet Events</div>
         <div class="muted" id="events-count">0</div>
+        <button class="panel-collapse" onclick="togglePanelCollapse(event, 'events-panel')">−</button>
     </div>
 
     <div class="panel-body" id="events-content">
@@ -485,6 +525,7 @@ let filterDirty = true;
 let visibleEdgesCache = [];
 let visibleEdgesDirty = true;
 let physicsPausedUntil = 0;
+let selectedConnection = null;
 
 const TCP_SERVICES = new Set([
     "tcp",
@@ -700,6 +741,22 @@ function resizeCanvas() {
     canvas.height = window.innerHeight;
 }
 
+function togglePanelCollapse(event, panelId) {
+    event.stopPropagation();
+
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    const btn = panel.querySelector(".panel-collapse");
+    const collapsed = panel.classList.toggle("collapsed");
+
+    if (btn) {
+        btn.innerText = collapsed ? "+" : "−";
+    }
+
+    localStorage.setItem(`nm:${panelId}:collapsed`, collapsed ? "1" : "0");
+}
+
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 
@@ -857,6 +914,15 @@ function setupPanels() {
         if (savedSize) {
             panel.style.width = savedSize.width;
             panel.style.height = savedSize.height;
+        }
+
+        const savedCollapsed = localStorage.getItem(`nm:${id}:collapsed`) === "1";
+
+        if (savedCollapsed) {
+            panel.classList.add("collapsed");
+
+            const btn = panel.querySelector(".panel-collapse");
+            if (btn) btn.innerText = "+";
         }
 
         const header = panel.querySelector(".panel-header");
@@ -1049,7 +1115,8 @@ canvas.addEventListener("click", e => {
 
     selectedNode = null;
     selectedEdge = null;
-    selectedEdgeKey = null; 
+    selectedEdgeKey = null;
+    selectedConnection = null;
 
     const node = pickNodeAtWorld(p.x, p.y);
 
@@ -1108,6 +1175,10 @@ document.getElementById("show-external-to-gateway")?.addEventListener("change", 
     markVisualFilterDirty();
 });
 
+document.getElementById("show-edge-labels")?.addEventListener("change", () => {
+    markVisualFilterDirty();
+});
+
 document.querySelectorAll("[data-protocol]").forEach(cb => {
     cb.addEventListener("change", () => {
         markVisualFilterDirty();
@@ -1119,6 +1190,10 @@ document.querySelectorAll("[data-protocol]").forEach(cb => {
 document.getElementById("edge-display-mode")?.addEventListener("change", () => {
     markVisualFilterDirty();
 });
+
+function showEdgeLabelsEnabled() {
+    return document.getElementById("show-edge-labels")?.checked ?? true;
+}
 
 function rebuildVisibleEdges() {
     visibleEdgesCache = graph.edges.filter(edgeVisible);
@@ -1134,6 +1209,51 @@ function markVisualFilterDirty() {
     filterDirty = true;
     visibleEdgesDirty = true;
     physicsPausedUntil = Date.now() + 120;
+}
+
+function connectionKey(c) {
+    return `${c.actual_src || ""}|${c.actual_dst || ""}|${c.type || ""}`;
+}
+
+function edgeContainsSelectedConnection(e) {
+    if (!selectedConnection) return false;
+
+    const wantedSrc = selectedConnection.actual_src;
+    const wantedDst = selectedConnection.actual_dst;
+    const wantedType = selectedConnection.type;
+
+    const data = e.data || {};
+
+    // 1. Check expanded connection list
+    if ((data.connections || []).some(c =>
+        c.actual_src === wantedSrc &&
+        c.actual_dst === wantedDst &&
+        c.type === wantedType
+    )) {
+        return true;
+    }
+
+    // 2. Check direct actual fields, with route-aware fallback
+    const actualSrc = data.actual_src || e.from;
+    const actualDst = data.actual_dst || e.to;
+
+    if (
+        actualSrc === wantedSrc &&
+        actualDst === wantedDst &&
+        (e.type === wantedType || e.type === "mixed")
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function selectConnectionFromEdge(src, dst, type) {
+    selectedConnection = {
+        actual_src: src,
+        actual_dst: dst,
+        type
+    };
 }
 
 function pickNodeAtWorld(x, y) {
@@ -1826,6 +1946,7 @@ function clearSelection() {
     selectedNode = null;
     selectedEdge = null;
     selectedEdgeKey = null;
+    selectedConnection = null;
     document.getElementById("info").innerHTML = "Click a node or edge.";
     syncPinButton();
 }
@@ -2349,6 +2470,15 @@ function drawEdges() {
             ctx.globalAlpha = 1;
         }
 
+        const isSelectedConnectionPath = edgeContainsSelectedConnection(e);
+
+        if (isSelectedConnectionPath) {
+            ctx.lineWidth = width + 4;
+            ctx.globalAlpha = 1;
+            ctx.shadowColor = "#60a5fa";
+            ctx.shadowBlur = 18;
+        }
+
         if (width >= 5 || presentation.glow) {
             ctx.shadowColor = edgeColor(e.type);
             ctx.shadowBlur = width * 1.5;
@@ -2401,20 +2531,50 @@ function drawEdges() {
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
 
-        const domains = e.data?.domains || [];
+        const labelDomains = cleanDomains(e.data?.domains || []);
 
-        if (domains.length) {
-            ctx.save();
-            ctx.font = "10px monospace";
-            ctx.fillStyle = "#cbd5e1";
-            ctx.fillText(domains[0], mx + nx * curve + 6, my + ny * curve - 6);
-            ctx.restore();
+        if (showEdgeLabelsEnabled()) {
+            const canShowDomainLabel =
+                labelDomains.length &&
+                ![
+                    "local_to_switch",
+                    "switch_to_gateway",
+                    "gateway_to_switch",
+                    "switch_to_local",
+                    "dns_to_switch",
+                    "dns_to_gateway"
+                ].includes(e.data?.visual_route);
+
+            if (canShowDomainLabel) {
+                ctx.save();
+                ctx.font = "10px monospace";
+                ctx.fillStyle = "#cbd5e1";
+                ctx.fillText(labelDomains[0], mx + nx * curve + 6, my + ny * curve - 6);
+                ctx.restore();
+            }
         }
     }
 }
 
 function short(s, max = 48) {
     return s && s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function isNoiseDomain(d) {
+    if (!d) return true;
+
+    d = String(d).toLowerCase();
+
+    return (
+        d.endsWith(".in-addr.arpa") ||
+        d.endsWith(".ip6.arpa")
+    );
+}
+
+function cleanDomains(domains) {
+    return (domains || [])
+        .filter(d => !isNoiseDomain(d))
+        .slice(0, 8);
 }
 
 function drawNodes() {
@@ -2610,6 +2770,26 @@ function showNodeInfo(n) {
 function showEdgeInfo(e) {
     const data = e.data || {};
     const connections = data.connections || [];
+    const cleanEdgeDomains = cleanDomains(data.domains);
+    const cleanDnsQueries = cleanDomains(data.dns_queries);
+
+    const connectionHtml = connections.slice(0, 40).map((c, index) => {
+    const cleanConnectionDomains = cleanDomains(c.domains);
+    const src = c.actual_src || "?";
+    const dst = c.actual_dst || "?";
+    const type = c.type || "unknown";
+
+        return `
+            <div class="event-line connection-line"
+                onclick="selectConnectionFromEdge('${src}', '${dst}', '${type}')">
+                <b>${src} → ${dst}</b>
+                <span class="badge">${type}</span><br>
+                Packets: ${c.packets || 0} | Bytes: ${c.bytes || 0}
+                ${(c.ports || []).length ? `<br>Ports: ${(c.ports || []).join(", ")}` : ""}
+                ${cleanConnectionDomains.length ? `<br>Domains: ${cleanConnectionDomains.slice(0, 3).join(", ")}` : ""}
+            </div>
+        `;
+    }).join("");
 
     document.getElementById("info").innerHTML = `
         <b>${e.from} → ${e.to}</b><br>
@@ -2622,22 +2802,15 @@ function showEdgeInfo(e) {
         <div class="kv"><div class="k">Weight</div><div>${(e.weight || 0).toFixed(2)}</div></div>
         ${data.actual_src ? `<div class="kv"><div class="k">Actual src</div><div>${data.actual_src}</div></div>` : ""}
         ${data.actual_dst ? `<div class="kv"><div class="k">Actual dst</div><div>${data.actual_dst}</div></div>` : ""}
+
         ${connections.length ? `
-        <hr>
-        <div class="muted">Connections on this visual segment</div>
-        <div>
-            ${connections.slice(0, 40).map(c => `
-                <div class="event-line">
-                    <b>${c.actual_src || "?"} → ${c.actual_dst || "?"}</b>
-                    <span class="badge">${c.type || "unknown"}</span><br>
-                    Packets: ${c.packets || 0} | Bytes: ${c.bytes || 0}
-                    ${(c.ports || []).length ? `<br>Ports: ${(c.ports || []).join(", ")}` : ""}
-                    ${(c.domains || []).length ? `<br>Domains: ${(c.domains || []).slice(0, 3).join(", ")}` : ""}
-                </div>
-            `).join("")}
-            ${connections.length > 40 ? `<div class="muted">Showing 40 of ${connections.length}</div>` : ""}
-        </div>
-    ` : ""}
+            <hr>
+            <div class="muted">Connections on this visual segment</div>
+            <div>
+                ${connectionHtml}
+                ${connections.length > 40 ? `<div class="muted">Showing 40 of ${connections.length}</div>` : ""}
+            </div>
+        ` : ""}
 
         <hr>
 
@@ -2645,7 +2818,7 @@ function showEdgeInfo(e) {
         <div>
             ${Object.entries(data.protocols || {})
                 .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
-                .join("")}
+                .join("") || "none"}
         </div>
 
         <hr>
@@ -2659,8 +2832,13 @@ function showEdgeInfo(e) {
 
         <div class="muted">Domains</div>
         <div>
-            ${(data.domains || []).join("<br>") || "none"}
+            ${cleanEdgeDomains.length ? cleanEdgeDomains.join("<br>") : "none"}
         </div>
+        ${cleanDnsQueries.length ? `
+        <hr>
+        <div class="muted">DNS queries seen on this edge</div>
+        <div>${cleanDnsQueries.join("<br>")}</div>
+    ` : ""}
     `;
 }
 

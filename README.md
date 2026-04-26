@@ -148,3 +148,5 @@ This project is licensed under the MIT License.
 ## Preview
 
 ![Preview](docs/screenshot.png)
+![Preview](docs/screenshot_node.png)
+![Preview](docs/screenshot_edge.png)

@@ -200,6 +200,22 @@ def get_os_default_gateway():
 
     return None
 
+def get_resolved_names_for_ip(state, ip, limit=8):
+    if not ip:
+        return []
+
+    names = []
+
+    primary = state.get("ip_name_map", {}).get(ip)
+    if primary:
+        names.append(primary)
+
+    for name in state.get("dns_names", {}).get(ip, []) or []:
+        if name and name not in names:
+            names.append(name)
+
+    return names[:limit]
+
 def set_domain_name(state, ip, domain):
     if not ip or not domain:
         return
@@ -1262,6 +1278,7 @@ def update_state(event):
             "first_seen": now,
             "last_seen": now,
             "domains": [],
+            "dns_queries": [],
             "tcp_flags": {}
         }
 
@@ -1274,8 +1291,13 @@ def update_state(event):
         flags = flow.setdefault("tcp_flags", {})
         flags[event["tcp_flags"]] = int(flags.get(event["tcp_flags"], 0)) + 1
 
-    if event.get("domain") and event["domain"] not in flow["domains"]:
-        flow["domains"].append(event["domain"])
+    if event.get("domain"):
+        if proto == "dns":
+            if event["domain"] not in flow.setdefault("dns_queries", []):
+                flow["dns_queries"].append(event["domain"])
+        else:
+            if event["domain"] not in flow.setdefault("domains", []):
+                flow["domains"].append(event["domain"])
 
     # -------------------------------------------------
     # Recent event ring buffer
@@ -1539,6 +1561,7 @@ def build_relationship_edges(state):
                 "packets": 0,
                 "bytes": 0,
                 "domains": [],
+                "dns_queries": [],
                 "first_seen": flow.get("first_seen"),
                 "last_seen": flow.get("last_seen")
             }
@@ -1562,9 +1585,18 @@ def build_relationship_edges(state):
         if flow.get("dst_port") and flow.get("dst_port") not in rel["ports"]:
             rel["ports"].append(flow.get("dst_port"))
 
-        for domain in flow.get("domains", []):
-            if domain not in rel["domains"]:
-                rel["domains"].append(domain)
+        # Only attach DNS labels to the edge when the edge endpoint itself
+        # has a resolved DNS name.
+        for endpoint in [dst, src]:
+            if classify_ip(endpoint) == "external_host":
+                for name in get_resolved_names_for_ip(state, endpoint):
+                    if name not in rel["domains"]:
+                        rel["domains"].append(name)
+        
+        # Keep DNS query names separate from resolved endpoint names.
+        for query in flow.get("dns_queries", []):
+            if query not in rel["dns_queries"]:
+                rel["dns_queries"].append(query)
 
         if flow.get("last_seen"):
             rel["last_seen"] = max(float(rel.get("last_seen") or 0), float(flow.get("last_seen")))
@@ -1596,6 +1628,7 @@ def build_relationship_edges(state):
                 "packets": rel["packets"],
                 "bytes": rel["bytes"],
                 "domains": rel["domains"],
+                "dns_queries": rel["dns_queries"],
                 "first_seen": rel["first_seen"],
                 "last_seen": rel["last_seen"]
             }
