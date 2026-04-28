@@ -1,3 +1,5 @@
+// filters.js
+
 function getTextFilter(id) {
     return (document.getElementById(id)?.value || "").trim().toLowerCase();
 }

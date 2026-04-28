@@ -1,3 +1,5 @@
+// api.js
+
 async function fetchGraph() {
     try {
         const res = await fetch("/graph");

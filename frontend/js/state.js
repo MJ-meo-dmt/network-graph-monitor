@@ -1,3 +1,5 @@
+// state.js
+
 let graph = { nodes: [], edges: [], stats: {} };
 let edgeCache = {};
 let nodeMap = {};
