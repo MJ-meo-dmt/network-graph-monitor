@@ -1,22 +1,49 @@
+# graph_builder.py
+
 import json
 import os
 import time
-import socket
 import ipaddress
 import threading
 import subprocess
 import re
 import uuid
+
+from state_schema import empty_state, normalize_state
 from session_manager import get_current_state_path
 from identity import build_device_identity
-from net_ports import VPN_PROXY_PORTS
+from net_utils import (
+    classify_ip,
+    is_ipv6_address,
+    get_resolved_names_for_ip,
+    set_domain_name,
+    should_check_rdns,
+    try_reverse_dns_hostname,
+    flow_key,
+    pair_key,
+    add_unique_list_item,
+    set_hostname,
+    best_display_name,
+)
+
+from net_ports import (
+    VPN_PROXY_PORTS,
+    ADMIN_PORTS,
+    REMOTE_ACCESS_PORTS,
+    SENSITIVE_PORT_LABELS,
+    SERVICE_PORTS,
+    WIRED_NAME_HINTS,
+    WIRED_SERVICE_PORTS,
+    MOBILE_NAME_HINTS
+)
+from heuristics import run_heuristics
+
 
 STATE_LOCK = threading.RLock()
 LAST_GOOD_STATE = None
 
 RECENT_FLOW_WINDOW_SECONDS = 1800
 MAX_EVENTS = None
-RDNS_RETRY_SECONDS = 3600
 
 INFRA_ROUTES = {
     "local_to_switch",
@@ -33,61 +60,9 @@ GATEWAY_EXTERNAL_ROUTES = {
     "gateway_to_external_dns",
 }
 
+
 def get_state_path():
     return get_current_state_path()
-
-def empty_state():
-    return {
-        "devices": {},
-        "flows": {},
-        "events": [],
-        "scanner_map": {},
-        "external_map": {},
-        "dns_map": {},
-        "dns_names": {},
-        "hostnames": {},
-        "domains": {},
-        "ip_name_map": {},
-        "gateway": None,
-        "rdns_checked": {},
-        "services": {},
-        "categories": {},
-        "gateway_override": None,
-        "l2_devices": {},
-        "l2_links": {},
-        "access_paths": {},
-        "default_switch": None,
-        "filters": {
-            "show_ipv6": False
-        }
-    }
-
-
-def normalize_state(state):
-    if not isinstance(state, dict):
-        state = empty_state()
-
-    state.setdefault("devices", {})
-    state.setdefault("flows", {})
-    state.setdefault("events", [])
-    state.setdefault("scanner_map", {})
-    state.setdefault("external_map", {})
-    state.setdefault("dns_map", {})
-    state.setdefault("dns_names", {})
-    state.setdefault("hostnames", {})
-    state.setdefault("domains", {})
-    state.setdefault("ip_name_map", {})
-    state.setdefault("gateway", None)
-    state.setdefault("rdns_checked", {})
-    state.setdefault("gateway_override", None)
-    state.setdefault("l2_devices", {})
-    state.setdefault("l2_links", {})
-    state.setdefault("access_paths", {})
-    state.setdefault("default_switch", None)
-    state.setdefault("filters", {})
-    state["filters"].setdefault("show_ipv6", False)
-
-    return state
 
 
 def load_state():
@@ -149,31 +124,15 @@ def get_access_path(state, ip):
     if mac in bad_macs:
         return "gateway"
 
-    # Wired desktop / Windows hints
-    wired_name_hints = [
-        "desktop", "pc", "workstation", "server", "nas", "proxmox",
-        "esxi", "ubuntu", "debian", "windows"
-    ]
-
-    if any(h in hostname for h in wired_name_hints):
+    if any(h in hostname for h in WIRED_NAME_HINTS):
         return "switch"
 
-    # Server-ish / wired service ports
-    wired_service_ports = {22, 53, 67, 80, 443, 445, 3389, 8080, 8443}
-    if ports & wired_service_ports:
+    if ports & WIRED_SERVICE_PORTS:
         return "switch"
 
-    # Phone/tablet hostname hints
-    mobile_name_hints = [
-        "iphone", "ipad", "android", "galaxy", "samsung",
-        "a05", "a05s", "redmi", "xiaomi", "huawei", "honor",
-        "oppo", "vivo", "pixel", "phone"
-    ]
-
-    if any(h in hostname for h in mobile_name_hints):
+    if any(h in hostname for h in MOBILE_NAME_HINTS):
         return "gateway"
 
-    # Last-resort weak hint only
     if protocols.get("arp", 0) > 0 and not ports:
         return "gateway"
 
@@ -199,50 +158,6 @@ def get_os_default_gateway():
 
     return None
 
-def get_resolved_names_for_ip(state, ip, limit=8):
-    if not ip:
-        return []
-
-    names = []
-
-    primary = state.get("ip_name_map", {}).get(ip)
-    if primary:
-        names.append(primary)
-
-    for name in state.get("dns_names", {}).get(ip, []) or []:
-        if name and name not in names:
-            names.append(name)
-
-    return names[:limit]
-
-def set_domain_name(state, ip, domain):
-    if not ip or not domain:
-        return
-
-    if isinstance(domain, bytes):
-        domain = domain.decode(errors="ignore")
-
-    domain = str(domain).strip().strip(".").replace("\x00", "")
-
-    if domain.startswith("b'") and domain.endswith("'"):
-        domain = domain[2:-1]
-
-    if domain.startswith('b"') and domain.endswith('"'):
-        domain = domain[2:-1]
-
-    if not domain:
-        return
-
-    state.setdefault("domains", {})[ip] = domain
-
-    if ip in state.get("devices", {}):
-        state["devices"][ip]["domain"] = domain
-
-def should_check_rdns(state, ip, now):
-    checked = state.setdefault("rdns_checked", {})
-    last = float(checked.get(ip, 0) or 0)
-    return now - last > RDNS_RETRY_SECONDS
-
 def detect_dns_servers(state):
     servers = set()
 
@@ -256,58 +171,8 @@ def detect_dns_servers(state):
 
     return list(servers)
 
-def classify_ip(ip):
-    if not ip:
-        return "unknown"
-
-    try:
-        addr = ipaddress.ip_address(ip)
-
-        if addr.is_multicast:
-            return "multicast"
-
-        if addr.is_loopback:
-            return "loopback"
-
-        if str(addr) == "255.255.255.255":
-            return "broadcast"
-
-        if ip.endswith(".255"):
-            return "broadcast"
-
-        if addr.is_private:
-            return "local_device"
-
-        return "external_host"
-
-    except Exception:
-        if ip.endswith(".255"):
-            return "broadcast"
-
-        return "unknown"
-
-def is_ipv6_address(value):
-    try:
-        return ipaddress.ip_address(str(value)).version == 6
-    except Exception:
-        return False
-
-def try_reverse_dns_hostname(ip):
-    try:
-        name, _, _ = socket.gethostbyaddr(ip)
-        if name:
-            return name.split(".")[0]
-    except Exception:
-        return None
-
-    return None
-
-def flow_key(src, dst, protocol, src_port=None, dst_port=None):
-    return f"{src}|{dst}|{protocol or 'unknown'}|{src_port or ''}|{dst_port or ''}"
 
 
-def pair_key(src, dst):
-    return f"{src}|{dst}"
 
 
 def detect_tunnels_and_proxies(state):
@@ -392,59 +257,6 @@ def detect_gateway(state):
     return gateway
 
 
-def add_unique_list_item(mapping, key, value, limit=50):
-    if not key or not value:
-        return
-
-    items = mapping.setdefault(key, [])
-
-    if value not in items:
-        items.append(value)
-
-    if len(items) > limit:
-        del items[:-limit]
-
-
-def set_hostname(state, ip, hostname):
-    if not ip or not hostname:
-        return
-
-    if isinstance(hostname, bytes):
-        hostname = hostname.decode(errors="ignore")
-
-    hostname = str(hostname).strip().strip(".").replace("\x00", "")
-
-    if hostname.startswith("b'") and hostname.endswith("'"):
-        hostname = hostname[2:-1]
-
-    if hostname.startswith('b"') and hostname.endswith('"'):
-        hostname = hostname[2:-1]
-
-    if not hostname:
-        return
-
-    domain_names = {
-        "WORKGROUP",
-        "MSHOME",
-        "LOCAL",
-        "HOME",
-        "DOMAIN"
-    }
-
-    if hostname.upper() in domain_names:
-        set_domain_name(state, ip, hostname)
-        return
-
-    current = state.setdefault("hostnames", {}).get(ip)
-
-    if current and current.upper() not in domain_names:
-        return
-
-    state["hostnames"][ip] = hostname
-
-    if ip in state.get("devices", {}):
-        state["devices"][ip]["hostname"] = hostname
-
 def external_boundary_summary(state):
     externals = set()
 
@@ -480,14 +292,6 @@ def detect_nat_summary(state, gateway):
         "gateway": gateway
     }
 
-def best_display_name(ip, state):
-    device = state.get("devices", {}).get(ip, {})
-    hostname = device.get("hostname") or state.get("hostnames", {}).get(ip)
-
-    if hostname and isinstance(hostname, str):
-        return hostname
-
-    return ip
 
 def make_segment_edge(src, dst, etype, e, route, actual_src=None, actual_dst=None, weight_scale=0.6):
     data = dict(e.get("data", {}))
@@ -1473,28 +1277,28 @@ def assess_device_risk(ip, device, state):
                 "low"
             )
 
-    # 4. Suspicious services for normal clients
-    risky_ports = {
-        23: "telnet",
-        445: "smb",
-        3389: "rdp",
-        5900: "vnc",
-        5985: "winrm",
-        5986: "winrm-ssl",
-        1080: "socks-proxy",
-        3128: "proxy",
-        4444: "common-reverse-shell",
-        5555: "adb/common-backdoor"
-    }
+    seen_remote_access = sorted(p for p in ports if p in REMOTE_ACCESS_PORTS)
 
-    seen_risky = sorted(p for p in ports if p in risky_ports)
+    if seen_remote_access and not is_known_infra:
+        add(
+            3,
+            "remote_access_service_seen",
+            "Remote access service observed on this device.",
+            {"ports": {p: SENSITIVE_PORT_LABELS.get(p, "remote-access") for p in seen_remote_access}},
+            "medium"
+        )
+
+    seen_risky = sorted(
+        p for p in ports
+        if p in ADMIN_PORTS or p in VPN_PROXY_PORTS or p in REMOTE_ACCESS_PORTS
+    )
 
     if seen_risky and not is_known_infra:
         add(
             2,
             "sensitive_service_seen",
             "Sensitive management or lateral-movement service observed.",
-            {"ports": {p: risky_ports[p] for p in seen_risky}}
+            {"ports": {p: SENSITIVE_PORT_LABELS.get(p, SERVICE_PORTS.get(p, ("unknown",))[0]) for p in seen_risky}}
         )
 
     # 5. OT / ICS traffic should stand out
@@ -1641,16 +1445,21 @@ def build_relationship_edges(state):
 
     edges = []
 
+    intelligence_edges = state.get("intelligence", {}).get("edges", {})
+
     for key, rel in pairs.items():
         protocols = set(rel["protocols"].keys())
         primary_type = relationship_type(protocols)
 
-        # scan-ish edge: many destination ports on same relationship
         if len(rel.get("ports", [])) > 15:
             primary_type = "scan"
 
         packets = rel.get("packets", 0)
         weight = min(6, 0.7 + packets / 35)
+
+        edge_intel_key = f"{rel['from']}|{rel['to']}"
+        edge_intel = intelligence_edges.get(edge_intel_key, {})
+        edge_score = int(edge_intel.get("score", 0) or 0)
 
         edges.append({
             "from": rel["from"],
@@ -1668,7 +1477,14 @@ def build_relationship_edges(state):
                 "domains": rel["domains"],
                 "dns_queries": rel["dns_queries"],
                 "first_seen": rel["first_seen"],
-                "last_seen": rel["last_seen"]
+                "last_seen": rel["last_seen"],
+
+                # Intelligence fields
+                "intelligence": edge_intel,
+                "suspicion_score": edge_score,
+                "flags": edge_intel.get("flags", []),
+                "reasons": edge_intel.get("reasons", []),
+                "confidence": edge_intel.get("confidence", "low"),
             }
         })
 
@@ -1711,6 +1527,18 @@ def get_default_switch(state):
 def build_graph(state):
     state = normalize_state(state)
 
+    try:
+        state["intelligence"] = run_heuristics(state)
+    except Exception as e:
+        print("Heuristics error:", e)
+        state["intelligence"] = {
+            "nodes": {},
+            "edges": {},
+            "summary": {
+                "error": str(e)
+            }
+        }
+
     nodes = []
     gateway = detect_gateway(state)
 
@@ -1726,55 +1554,71 @@ def build_graph(state):
         importance = importance_score(device)
 
         group = classify_ip(ip)
-        
+
         if ip == gateway:
             group = "gateway"
 
         if risk >= 6 and not risk_assessment["is_known_infra"]:
             group = "suspicious"
 
+        intel = state.get("intelligence", {}).get("nodes", {}).get(ip, {})
+        intel_score = int(intel.get("score", 0) or 0)
+
+        node_group = group
+
+        if intel_score >= 75 and group not in {"gateway", "switch"}:
+            node_group = "suspicious"
+
         identity = build_device_identity(ip, device, group, state)
+
+        node_data = {
+            "ip": ip,
+            "identity": identity,
+            "hostname": identity.get("hostname"),
+            "domain": device.get("domain") or state.get("domains", {}).get(ip),
+            "vendor": identity.get("vendor"),
+            "os": identity.get("os"),
+            "role": identity.get("role"),
+            "display_name": identity.get("name"),
+            "dns_names": state.get("dns_names", {}).get(ip, []),
+            "dns_answer_name": identity.get("dns_answer_name"),
+            "access_path": get_access_path(state, ip),
+
+            "mac": device.get("mac"),
+            "first_seen": device.get("first_seen"),
+            "last_seen": device.get("last_seen"),
+            "packets": device.get("packets", 0),
+            "bytes": device.get("bytes", 0),
+            "protocols": device.get("protocols", {}),
+            "services": device.get("services", {}),
+            "categories": device.get("categories", {}),
+            "ports": sorted(device.get("ports", [])),
+            "importance": importance,
+            "risk": risk,
+            "risk_findings": risk_assessment["findings"],
+            "risk_role_hint": risk_assessment["role_hint"],
+            "risk_is_known_infra": risk_assessment["is_known_infra"],
+            "scanner": bool(device.get("scanner")),
+            "dns_spam": bool(device.get("dns_spam")),
+            "external_heavy": bool(device.get("external_heavy")),
+            "target_count": get_scan_target_count(state, ip),
+            "scan_port_count": get_scan_port_count(state, ip),
+            "external_target_count": len(state.get("external_map", {}).get(ip, [])),
+            "dns_domain_count": len(state.get("dns_map", {}).get(ip, [])),
+
+            # Intelligence fields
+            "intelligence": intel,
+            "suspicion_score": intel_score,
+            "flags": sorted(set((device.get("flags", []) or []) + (intel.get("flags", []) or []))),
+            "reasons": intel.get("reasons", []),
+            "confidence": intel.get("confidence", "low"),
+        }
 
         nodes.append({
             "id": ip,
             "label": identity["label_line_1"],
-            "group": group,
-            "data": {
-                "ip": ip,
-                "identity": identity,
-                "hostname": identity.get("hostname"),
-                "domain": device.get("domain") or state.get("domains", {}).get(ip),
-                "vendor": identity.get("vendor"),
-                "os": identity.get("os"),
-                "role": identity.get("role"),
-                "display_name": identity.get("name"),
-                "dns_names": state.get("dns_names", {}).get(ip, []),
-                "dns_answer_name": identity.get("dns_answer_name"),
-                "access_path": get_access_path(state, ip),
-
-                "mac": device.get("mac"),
-                "first_seen": device.get("first_seen"),
-                "last_seen": device.get("last_seen"),
-                "packets": device.get("packets", 0),
-                "bytes": device.get("bytes", 0),
-                "protocols": device.get("protocols", {}),
-                "services": device.get("services", {}),
-                "categories": device.get("categories", {}),
-                "ports": sorted(device.get("ports", [])),
-                "importance": importance,
-                "risk": risk,
-                "flags": device.get("flags", []),
-                "risk_findings": risk_assessment["findings"],
-                "risk_role_hint": risk_assessment["role_hint"],
-                "risk_is_known_infra": risk_assessment["is_known_infra"],
-                "scanner": bool(device.get("scanner")),
-                "dns_spam": bool(device.get("dns_spam")),
-                "external_heavy": bool(device.get("external_heavy")),
-                "target_count": get_scan_target_count(state, ip),
-                "scan_port_count": get_scan_port_count(state, ip),
-                "external_target_count": len(state.get("external_map", {}).get(ip, [])),
-                "dns_domain_count": len(state.get("dns_map", {}).get(ip, []))
-            }
+            "group": node_group,
+            "data": node_data
         })
 
     for node_id, l2 in state.get("l2_devices", {}).items():
@@ -1882,6 +1726,7 @@ def build_graph(state):
             "dns_servers": dns_servers,
             "default_switch": switch_id,
             "l2_devices": len(state.get("l2_devices", {})),
-            "vlans": sorted(vlans)
+            "vlans": sorted(vlans),
+            "intelligence": state.get("intelligence", {}).get("summary", {}),
         }
     }

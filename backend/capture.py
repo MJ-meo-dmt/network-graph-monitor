@@ -1,3 +1,5 @@
+# capture.py
+
 from scapy.all import sniff
 from analyzer import analyze_packet
 from graph_builder import update_state
