@@ -1,13 +1,18 @@
 # analyzer.py
 
 import time
-from scapy.all import IP, IPv6, Ether, TCP, UDP, DNS, DNSQR, ARP, ICMP
+from scapy.all import IP, IPv6, Ether, TCP, UDP, DNS, DNSQR, ARP, ICMP, raw
 from scapy.all import Dot3, LLC, SNAP, Dot1Q
 from scapy.layers.l2 import STP 
 from scapy.contrib.lldp import LLDPDU
 from scapy.layers.eap import EAPOL
 from scapy.all import NBNSQueryRequest, NBNSQueryResponse
-from net_ports import SERVICE_PORTS
+from net_ports import (
+    SERVICE_PORTS,
+    ROUTING_IP_PROTOCOLS,
+    ROUTING_UDP_PORTS,
+    ROUTING_MULTICASTS,
+)
 
 try:
     from scapy.contrib.cdp import (
@@ -15,9 +20,20 @@ try:
         CDPMsgPortID,
         CDPMsgPlatform,
         CDPMsgCapabilities,
+        CDPMsgAddr,
+        CDPMsgSoftwareVersion,
+        CDPMsgVTPMgmtDomain,
+        CDPMsgDuplex,
     )
 except Exception:
-    CDPMsgDeviceID = CDPMsgPortID = CDPMsgPlatform = CDPMsgCapabilities = None
+    CDPMsgDeviceID = None
+    CDPMsgPortID = None
+    CDPMsgPlatform = None
+    CDPMsgCapabilities = None
+    CDPMsgAddr = None
+    CDPMsgSoftwareVersion = None
+    CDPMsgVTPMgmtDomain = None
+    CDPMsgDuplex = None
 
 
 L2_PROTOCOL_MACS = {
@@ -76,6 +92,162 @@ def clean_l2_value(value):
 
     return value.strip() or None
 
+def extract_cdp_address_value(value):
+    if value is None:
+        return None
+
+    try:
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                found = extract_cdp_address_value(item)
+                if found:
+                    return found
+
+        text = clean_l2_value(value)
+
+        if not text:
+            return None
+
+        # Keep this conservative: return IPv4-looking values only.
+        parts = text.replace(",", " ").replace(";", " ").split()
+
+        for part in parts:
+            part = part.strip()
+
+            if part.count(".") == 3:
+                nums = part.split(".")
+
+                if all(n.isdigit() and 0 <= int(n) <= 255 for n in nums):
+                    return part
+
+        return text if text.count(".") == 3 else None
+
+    except Exception:
+        return None
+
+
+def normalize_duplex(value):
+    value = clean_l2_value(value)
+
+    if value is None:
+        return None
+
+    low = str(value).lower()
+
+    if low in {"1", "full", "fullduplex", "full-duplex"}:
+        return "full"
+
+    if low in {"0", "half", "halfduplex", "half-duplex"}:
+        return "half"
+
+    return value
+
+
+def routing_type_name(proto, pkt=None, dst=None, dst_port=None):
+    if proto == "ospf":
+        # OSPF packet types:
+        names = {
+            1: "hello",
+            2: "database_description",
+            3: "link_state_request",
+            4: "link_state_update",
+            5: "link_state_ack",
+        }
+
+        try:
+            payload = bytes(pkt[IP].payload) if IP in pkt else bytes(pkt[IPv6].payload)
+            if len(payload) >= 2:
+                return names.get(payload[1], f"type_{payload[1]}")
+        except Exception:
+            pass
+
+        return "ospf"
+
+    if proto == "eigrp":
+        return "eigrp"
+
+    if proto == "pim":
+        return "pim"
+
+    if proto == "vrrp":
+        return "vrrp"
+
+    if proto == "rip":
+        return "rip"
+
+    if proto == "hsrp":
+        if dst == "224.0.0.102":
+            return "hsrp_v2"
+        return "hsrp"
+
+    if proto == "glbp":
+        return "glbp"
+
+    if proto == "igmp":
+        return "igmp"
+
+    return proto or "routing"
+
+
+def detect_routing_control(pkt, event):
+    dst = event.get("dst_ip")
+    dst_port = event.get("dst_port")
+    proto_name = None
+
+    if IP in pkt:
+        proto_name = ROUTING_IP_PROTOCOLS.get(int(pkt[IP].proto))
+    elif IPv6 in pkt:
+        proto_name = ROUTING_IP_PROTOCOLS.get(int(pkt[IPv6].nh))
+
+    if not proto_name and event.get("transport") == "udp":
+        proto_name = ROUTING_UDP_PORTS.get(dst_port)
+
+    # IGMP is IP protocol 2. Keep separate because it is multicast control.
+    if IP in pkt and int(pkt[IP].proto) == 2:
+        proto_name = "igmp"
+
+    if not proto_name:
+        return False
+
+    multicast_role = ROUTING_MULTICASTS.get(dst)
+    rtype = routing_type_name(proto_name, pkt=pkt, dst=dst, dst_port=dst_port)
+
+    event["protocol"] = proto_name
+    event["service"] = proto_name
+    event["category"] = "routing"
+    event["routing_protocol"] = proto_name
+    event["routing_type"] = rtype
+    event["routing"] = {
+        "protocol": proto_name,
+        "type": rtype,
+        "multicast_role": multicast_role,
+        "router_id": None,
+        "area_id": None,
+        "group_id": None,
+        "details": {}
+    }
+
+    # Best-effort OSPF fields from raw header.
+    if proto_name == "ospf":
+        try:
+            payload = bytes(pkt[IP].payload) if IP in pkt else bytes(pkt[IPv6].payload)
+
+            if len(payload) >= 16:
+                router_id = ".".join(str(x) for x in payload[4:8])
+                area_id = ".".join(str(x) for x in payload[8:12])
+
+                event["routing"]["router_id"] = router_id
+                event["routing"]["area_id"] = area_id
+        except Exception:
+            pass
+
+    event["summary"] = (
+        f"{event.get('src_ip')} -> {event.get('dst_ip')} "
+        f"{proto_name.upper()} {rtype}"
+    )
+
+    return True
+
 def extract_l2_metadata(pkt):
     meta = {}
 
@@ -110,7 +282,9 @@ def extract_l2_metadata(pkt):
     # --- CDP (fallback parse) ---
     if CDPMsgDeviceID and pkt.haslayer(CDPMsgDeviceID):
         try:
-            meta["hostname"] = clean_l2_name(pkt[CDPMsgDeviceID].val)
+            device_id = clean_l2_name(pkt[CDPMsgDeviceID].val)
+            meta["device_id"] = device_id
+            meta["hostname"] = device_id
         except Exception:
             pass
 
@@ -129,6 +303,35 @@ def extract_l2_metadata(pkt):
     if CDPMsgCapabilities and pkt.haslayer(CDPMsgCapabilities):
         try:
             meta["capabilities"] = clean_l2_value(pkt[CDPMsgCapabilities].cap)
+        except Exception:
+            pass
+    
+    if CDPMsgAddr and pkt.haslayer(CDPMsgAddr):
+        try:
+            addr_layer = pkt[CDPMsgAddr]
+            meta["management_ip"] = (
+                extract_cdp_address_value(getattr(addr_layer, "addr", None))
+                or extract_cdp_address_value(getattr(addr_layer, "addresses", None))
+                or extract_cdp_address_value(addr_layer)
+            )
+        except Exception:
+            pass
+
+    if CDPMsgSoftwareVersion and pkt.haslayer(CDPMsgSoftwareVersion):
+        try:
+            meta["software_version"] = clean_l2_value(pkt[CDPMsgSoftwareVersion].val)
+        except Exception:
+            pass
+
+    if CDPMsgVTPMgmtDomain and pkt.haslayer(CDPMsgVTPMgmtDomain):
+        try:
+            meta["vtp_domain"] = clean_l2_value(pkt[CDPMsgVTPMgmtDomain].val)
+        except Exception:
+            pass
+
+    if CDPMsgDuplex and pkt.haslayer(CDPMsgDuplex):
+        try:
+            meta["duplex"] = normalize_duplex(getattr(pkt[CDPMsgDuplex], "duplex", None))
         except Exception:
             pass
 
@@ -328,6 +531,9 @@ def analyze_packet(pkt):
         "transport": None,
         "l2_proto": None,
         "l2_details": {},
+        "routing_protocol": None,
+        "routing_type": None,
+        "routing": None,
         "vlan": None,
         "vlans": []
     }
@@ -423,6 +629,9 @@ def analyze_packet(pkt):
         event["dst_port"] = int(pkt[UDP].dport)
         event["transport"] = "udp"
         event["payload_len"] = max(0, len(bytes(pkt[UDP].payload)))
+    
+    if detect_routing_control(pkt, event):
+        return event
     
     if DNS in pkt:
         event["protocol"] = "dns"

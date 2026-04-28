@@ -887,6 +887,21 @@ def update_l2_state(state, event):
 
     if meta.get("capabilities"):
         dev["capabilities"] = meta["capabilities"]
+    
+    if meta.get("device_id"):
+        dev["device_id"] = meta["device_id"]
+
+    if meta.get("management_ip"):
+        dev["management_ip"] = meta["management_ip"]
+
+    if meta.get("software_version"):
+        dev["software_version"] = meta["software_version"]
+
+    if meta.get("vtp_domain"):
+        dev["vtp_domain"] = meta["vtp_domain"]
+
+    if meta.get("duplex"):
+        dev["duplex"] = meta["duplex"]
 
     # Future topology
     if meta.get("port_id"):
@@ -1112,6 +1127,9 @@ def update_state(event):
             "protocol": proto,
             "service": event.get("service"),
             "category": event.get("category"),
+            "routing": event.get("routing"),
+            "routing_protocol": event.get("routing_protocol"),
+            "routing_type": event.get("routing_type"),
             "src_port": event.get("src_port"),
             "dst_port": event.get("dst_port"),
             "packets": 0,
@@ -1404,6 +1422,7 @@ def build_relationship_edges(state):
                 "bytes": 0,
                 "domains": [],
                 "dns_queries": [],
+                "routing": [],
                 "first_seen": flow.get("first_seen"),
                 "last_seen": flow.get("last_seen")
             }
@@ -1420,6 +1439,10 @@ def build_relationship_edges(state):
 
         if flow.get("category"):
             rel["categories"][flow["category"]] = rel["categories"].get(flow["category"], 0) + int(flow.get("packets", 0) or 0)
+        
+        if flow.get("routing"):
+            if flow["routing"] not in rel["routing"]:
+                rel["routing"].append(flow["routing"])
 
         for flag, count in flow.get("tcp_flags", {}).items():
             rel["tcp_flags"][flag] = rel["tcp_flags"].get(flag, 0) + int(count or 0)
@@ -1476,6 +1499,7 @@ def build_relationship_edges(state):
                 "bytes": rel["bytes"],
                 "domains": rel["domains"],
                 "dns_queries": rel["dns_queries"],
+                "routing": rel["routing"],
                 "first_seen": rel["first_seen"],
                 "last_seen": rel["last_seen"],
 
@@ -1652,6 +1676,11 @@ def build_graph(state):
                 "vendor": identity.get("vendor"),
                 "platform": l2.get("platform"),
                 "capabilities": l2.get("capabilities"),
+                "device_id": l2.get("device_id"),
+                "management_ip": l2.get("management_ip"),
+                "software_version": l2.get("software_version"),
+                "vtp_domain": l2.get("vtp_domain"),
+                "duplex": l2.get("duplex"),
                 "ports_seen": list(l2.get("ports_seen", [])),
                 "os": identity.get("os"),
                 "display_name": identity.get("name"),
