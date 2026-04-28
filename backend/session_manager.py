@@ -1,7 +1,10 @@
+# session_manager.py
+
 import json
 import os
 from datetime import datetime
 from config import SESSIONS_DIR, CURRENT_SESSION_PATH
+from state_schema import empty_state
 
 def ensure_sessions_dir():
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -10,33 +13,6 @@ def ensure_sessions_dir():
 def make_session_name():
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"session_state_{stamp}.json"
-
-
-def empty_state():
-    return {
-        "devices": {},
-        "flows": {},
-        "events": [],
-        "scanner_map": {},
-        "external_map": {},
-        "dns_map": {},
-        "dns_names": {},
-        "hostnames": {},
-        "domains": {},
-        "ip_name_map": {},
-        "gateway": None,
-        "rdns_checked": {},
-        "services": {},
-        "categories": {},
-        "gateway_override": None,
-        "l2_devices": {},
-        "l2_links": {},
-        "access_paths": {},
-        "default_switch": None,
-        "filters": {
-            "show_ipv6": False
-        }
-    }
 
 
 def get_current_state_path():

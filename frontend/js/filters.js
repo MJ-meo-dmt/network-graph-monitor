@@ -1,3 +1,5 @@
+// filters.js
+
 function getTextFilter(id) {
     return (document.getElementById(id)?.value || "").trim().toLowerCase();
 }
@@ -69,54 +71,51 @@ function edgeVisible(e) {
 
     // Aggregated edges: visible if ANY contained protocol is allowed
     if (protocolKeys.length > 0) {
-        return protocolKeys.some(protocolAllowed) && edgeMatchesFilters(e);
+        return protocolKeys.some(protocolAllowed) && edgeMatchesSearchFiltersOnly(e);
     }
 
     // Simple edge fallback
     const type = e.type || "unknown";
-    return protocolAllowed(type) && edgeMatchesFilters(e);
+    return protocolAllowed(type) && edgeMatchesSearchFiltersOnly(e);
 }
 
-function edgeMatchesFilters(e) {
+
+function edgeMatchesSearchFiltersOnly(e) {
     const ipFilter = getTextFilter("filter-ip");
     const portFilter = getTextFilter("filter-port");
-    const serviceFilter = document.getElementById("filter-service")?.value || "";
 
     if (ipFilter) {
-        const hay = `${e.from} ${e.to}`.toLowerCase();
+        const hay = `${e.from} ${e.to} ${e.data?.actual_src || ""} ${e.data?.actual_dst || ""}`.toLowerCase();
         if (!hay.includes(ipFilter)) return false;
     }
 
     if (portFilter) {
         const ports = e.data?.ports || [];
-        if (!ports.map(String).includes(portFilter)) return false;
-    }
+        const connectionPorts = (e.data?.connections || []).flatMap(c => c.ports || []);
+        const allPorts = [...ports, ...connectionPorts].map(String);
 
-    if (serviceFilter) {
-        const services = e.data?.services || {};
-        if (!Object.keys(services).some(s => s.toLowerCase().includes(serviceFilter))) {
-            return false;
-        }
+        if (!allPorts.includes(portFilter)) return false;
     }
 
     return true;
 }
 
+function nodeParticipatesInVisibleEdge(nodeId) {
+    return getVisibleEdges().some(e => e.from === nodeId || e.to === nodeId);
+}
+
 function nodeVisible(n) {
     const ipFilter = getTextFilter("filter-ip");
-    const serviceFilter = document.getElementById("filter-service")?.value || "";
+    const portFilter = getTextFilter("filter-port");
 
     if (n.virtual) return true;
 
-    if (ipFilter && !(n.id || "").toLowerCase().includes(ipFilter)) {
-        return false;
-    }
+    const hasSearchFilter = Boolean(ipFilter || portFilter);
 
-    if (serviceFilter) {
-        const services = n.data?.services || {};
-        if (!Object.keys(services).some(s => s.toLowerCase().includes(serviceFilter))) {
-            return false;
-        }
+    // During search filtering, show every node that belongs to a visible edge path.
+    // This keeps switch/gateway/external nodes visible even if they don't directly own the filtered service.
+    if (hasSearchFilter) {
+        return nodeParticipatesInVisibleEdge(n.id);
     }
 
     return true;
@@ -209,33 +208,16 @@ function collectServicesFromGraph() {
     return Array.from(services).sort();
 }
 
-function updateServiceFilterOptions() {
-    const sel = document.getElementById("filter-service");
-    if (!sel) return;
-
-    const current = sel.value;
-    const services = collectServicesFromGraph();
-
-    sel.innerHTML = `<option value="">All services</option>`;
-
-    for (const service of services) {
-        const opt = document.createElement("option");
-        opt.value = service;
-        opt.textContent = service;
-        sel.appendChild(opt);
-    }
-
-    if (services.includes(current)) {
-        sel.value = current;
-    }
-}
 
 /*------------------------------------*/
 /*              LISTENERS             */
 /*------------------------------------*/
+document.getElementById("filter-ip")?.addEventListener("input", () => {
+    markVisualFilterDirty();
+});
 
-document.getElementById("filter-service")?.addEventListener("change", () => {
-    // No backend call needed, this is frontend-only filtering
+document.getElementById("filter-port")?.addEventListener("input", () => {
+    markVisualFilterDirty();
 });
 
 document.getElementById("show-logical-edges")?.addEventListener("change", () => {

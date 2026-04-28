@@ -1,3 +1,5 @@
+// panel.js
+
 function captureCurrentLayout() {
     const layout = {};
 
