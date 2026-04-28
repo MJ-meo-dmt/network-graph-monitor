@@ -1,3 +1,5 @@
+// physics.js
+
 function stepPhysics() {
     if (Date.now() < physicsPausedUntil) return;
 

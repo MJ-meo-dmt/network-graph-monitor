@@ -1,3 +1,5 @@
+// render.js
+
 function nodeColor(group) {
     return group === "external_anchor" ? "#cfcecc" :
            group === "local_anchor" ? "#60a5fa" :
@@ -24,17 +26,61 @@ function edgeColor(type) {
            type === "http" ? "rgba(249,115,22,0.78)" :
            type === "tls" ? "rgba(34,197,94,0.60)" :
            type === "scan" ? "rgba(244,63,94,0.86)" :
+           type === "ospf" ? "rgba(14,165,233,0.85)" :
+           type === "eigrp" ? "rgba(59,130,246,0.85)" :
+           type === "rip" ? "rgba(125,211,252,0.80)" :
+           type === "vrrp" ? "rgba(251,191,36,0.80)" :
+           type === "hsrp" ? "rgba(251,146,60,0.80)" :
+           type === "glbp" ? "rgba(250,204,21,0.80)" :
+           type === "igmp" ? "rgba(192,132,252,0.75)" :
+           type === "pim" ? "rgba(168,85,247,0.75)" :
            "rgba(148,163,184,0.35)";
 }
+
+// Temp for lo
+let loggedNodeCount = 0;
+const loggedNodes = new Set();
 
 function trafficHeat(n) {
     const packets = Number(n.data?.packets || 0);
     const bytes = Number(n.data?.bytes || 0);
 
-    const packetScore = Math.log10(packets + 1) / 2.6;
-    const byteScore = Math.log10(bytes + 1) / 5.2;
+    const packetScore = Math.log10(packets + 1) / 8.0;
+    const byteScore = Math.log10(bytes + 1) / 12.0;
+    // Only log once per unique node
+    if (!loggedNodes.has(n.id)) {
+        console.log(`Logged Node: ${n.id}`);
+        console.log(`  Packet Score: ${packetScore}`);
+        console.log(`  Byte Score: ${byteScore}`);
+        loggedNodes.add(n.id);
+        loggedNodeCount++;
+    }  
 
     return Math.max(0, Math.min(1, Math.max(packetScore, byteScore)));
+}
+
+// Function to determine edge color based on traffic volume
+function getTrafficEdgeColor(packets, bytes) {
+    // Calculate normalized score (0.0 - 1.0)
+    const packetScore = Math.log10(packets + 1) / 8.0;
+    const byteScore = Math.log10(bytes + 1) / 12.0;
+    const score = Math.max(0, Math.min(1, Math.max(packetScore, byteScore)));
+
+    // Define color thresholds for traffic intensity
+    // Low (0.0 - 0.4): Subtle Blue (Base)
+    // Medium (0.4 - 0.7): Bright Yellow/Orange (High Visibility)
+    // High (0.7 - 1.0): Red/Hot Orange (Critical Traffic)
+    
+    if (score < 0.4) {
+        // Low Traffic: Calm Blue
+        return `rgba(59, 130, 246, 0.7)`; 
+    } else if (score < 0.7) {
+        // Medium-High Traffic: Warm Yellow/Orange
+        return `rgba(250, 204, 21, 0.85)`;
+    } else {
+        // Very High Traffic: Hot Red/Orange
+        return `rgba(251, 115, 22, 0.95)`;
+    }
 }
 
 function nodeTrafficColor(n) {
@@ -47,10 +93,10 @@ function nodeTrafficColor(n) {
 
     // Only external hosts get traffic heat colors.
     if (n.group === "external_host") {
-        if (heat < 0.80) return "#a3b0c2"; // grey
-        if (heat < 1.0) return "#ffe678"; // blue
-        if (heat < 1.2) return "#fdd948"; // yellow
-        if (heat < 1.4) return "#f38c16";
+        if (heat < 0.2) return "#a3b0c2"; // grey
+        if (heat < 0.4) return "#84d6fc"; // blue
+        if (heat < 0.6) return "#fdd948"; // yellow
+        if (heat < 0.8) return "#f38c16";
         return "#ee3f0a";                  // orange red
     }
 
@@ -129,16 +175,48 @@ function drawEdges() {
         const visualRoute = e.data?.visual_route || null;
         const isLogicalDirect = visualRoute === "logical_direct";
 
-        ctx.strokeStyle = edgeColor(e.type);
+        const packets = Number(e.data?.packets || 0);
+        const bytes = Number(e.data?.bytes || 0);
 
-        if (visualRoute === "gateway_to_external" || visualRoute === "external_to_gateway") {
-            ctx.strokeStyle = "rgba(96,165,250,0.72)";
+        // Check for external edge override FIRST
+        const isExternalEdge = visualRoute === "gateway_to_external" || visualRoute === "external_to_gateway";
+
+        // Only apply heatmap mode if enabled
+        const enableHeatmap = getEdgeDisplayMode() === "usage";
+        
+        if (!enableHeatmap) {
+            // Default protocol-based coloring for normal/quiet/top modes
+            if (isLogicalDirect) {
+                ctx.strokeStyle = edgeColor(e.type);
+            } else if (visualRoute) {
+                ctx.setLineDash([7, 6]);
+                ctx.globalAlpha = 0.72;
+            } else {
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1;
+            }
+            
+            ctx.strokeStyle = edgeColor(e.type);
+        } else {
+            // Apply traffic gradient only when usage mode is selected
+            const trafficColor = getTrafficEdgeColor(packets, bytes);
+            ctx.strokeStyle = trafficColor;
+            
+            // External edges always get traffic gradient in heatmap mode
+            if (isExternalEdge) {
+                ctx.strokeStyle = trafficColor;
+            }
         }
 
         if (isLogicalDirect) {
             ctx.setLineDash([]);
             ctx.globalAlpha = 0.28;
-            ctx.strokeStyle = edgeColor(e.type);
+            
+            if (enableHeatmap) {
+                ctx.strokeStyle = getTrafficEdgeColor(packets, bytes);
+            } else {
+                ctx.strokeStyle = edgeColor(e.type);
+            }
         } else if (visualRoute) {
             ctx.setLineDash([7, 6]);
             ctx.globalAlpha = 0.72;
@@ -147,24 +225,22 @@ function drawEdges() {
             ctx.globalAlpha = 1;
         }
 
-        const packets = Number(e.data?.packets || 0);
-        const bytes = Number(e.data?.bytes || 0);
         const presentation = edgePresentation(e);
         ctx.globalAlpha *= presentation.alpha;
 
-        // traffic volume thickness
+        // traffic volume thickness - only apply heatmap width logic when enabled
         let width = 1;
 
-        // Only start thickening after meaningful volume
-        if (packets > 100 || bytes > 250000) {
-            const packetWidth = Math.log10(packets / 100) * 1.2;
-            const byteWidth = Math.log10(bytes / 250000) * 1.4;
+        
+        if (packets > 1500 || bytes > 4000000) {
+            const packetWidth = Math.log10(packets / 1200) * 2.5;
+            const byteWidth = Math.log10(bytes / 3500000) * 4.0;
 
             width += Math.max(0, packetWidth) + Math.max(0, byteWidth);
         }
-
-        // Cap heavy flows
+            
         width = Math.max(1, Math.min(width, 9));
+
         width += presentation.widthBoost;
         ctx.lineWidth = width;
 
@@ -183,7 +259,12 @@ function drawEdges() {
         }
 
         if (width >= 5 || presentation.glow) {
-            ctx.shadowColor = edgeColor(e.type);
+            // Only apply heatmap shadow when enabled
+            if (enableHeatmap) {
+                ctx.shadowColor = getTrafficEdgeColor(packets, bytes);
+            } else {
+                ctx.shadowColor = edgeColor(e.type);
+            }
             ctx.shadowBlur = width * 1.5;
         }
 
