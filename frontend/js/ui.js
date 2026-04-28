@@ -231,6 +231,9 @@ function renderEvents(events) {
             : "";
 
         const domain = e.domain ? ` | ${e.domain}` : "";
+        const routing = e.routing
+            ? ` | ${e.routing.protocol?.toUpperCase() || ""} ${e.routing.type || ""}`
+            : "";
         const ports = e.dst_port ? `:${e.dst_port}` : "";
 
         return `
@@ -238,15 +241,30 @@ function renderEvents(events) {
                 <span class="muted">${time}</span>
                 ${e.src_ip || "?"} → ${e.dst_ip || "?"}${ports}
                 <span class="badge">${e.protocol || "unknown"}</span>
-                ${domain}
+                ${domain}${routing}
             </div>
         `;
     }).join("");
 }
 
+function formatEvidence(evidence) {
+    if (!evidence || typeof evidence !== "object") return "";
+
+    if (evidence.ports && typeof evidence.ports === "object") {
+        return Object.entries(evidence.ports)
+            .map(([port, name]) => `<span class="badge">${port}: ${name}</span>`)
+            .join("");
+    }
+
+    return Object.entries(evidence)
+        .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+        .join("");
+}
+
 function showNodeInfo(n) {
     const data = n.data || {};
     const flags = data.flags || [];
+    const isL2Node = n.id?.startsWith("l2:") || n.group === "switch";
 
     if (n.id === "__local_anchor__") {
         const stats = graph.stats || {};
@@ -278,21 +296,34 @@ function showNodeInfo(n) {
         <span class="muted">${n.group}</span>
         ${n.pinned ? `<span class="badge">pinned</span>` : ""}
         <hr>
-        <div class="kv"><div class="k">IP</div><div>${data.ip || n.id}</div></div>
+
+        <div class="kv"><div class="k">${isL2Node ? "Node ID" : "IP"}</div><div>${data.ip || n.id}</div></div>
         <div class="kv"><div class="k">Identity</div><div>${data.identity?.label_line_1 || "unknown"}</div></div>
         <div class="kv"><div class="k">Role</div><div>${data.identity?.role || "unknown"}</div></div>
         <div class="kv"><div class="k">OS</div><div>${data.identity?.os || "unknown"}</div></div>
         <div class="kv"><div class="k">Vendor</div><div>${data.identity?.vendor || "unknown"}</div></div>
-        ${n.data.platform ? `<div class="kv"><div class="k">Platform</div><div>${n.data.platform}</div></div>` : ""}
-        ${n.data.capabilities ? `<div class="kv"><div class="k">Capabilities</div><div>${n.data.capabilities}</div></div>` : ""}
-        ${(n.data.ports_seen || []).length ? `<div class="kv"><div class="k">Observed switch ports</div><div>${n.data.ports_seen.join(", ")}</div></div>` : ""}
+
+        ${data.platform ? `<div class="kv"><div class="k">Platform</div><div>${data.platform}</div></div>` : ""}
+        ${data.capabilities ? `<div class="kv"><div class="k">Capabilities</div><div>${data.capabilities}</div></div>` : ""}
+        ${data.device_id ? `<div class="kv"><div class="k">CDP Device ID</div><div>${data.device_id}</div></div>` : ""}
+        ${data.management_ip ? `<div class="kv"><div class="k">Management IP</div><div>${data.management_ip}</div></div>` : ""}
+        ${data.software_version ? `<div class="kv"><div class="k">Software</div><div>${data.software_version}</div></div>` : ""}
+        ${data.vtp_domain ? `<div class="kv"><div class="k">VTP Domain</div><div>${data.vtp_domain}</div></div>` : ""}
+        ${data.duplex ? `<div class="kv"><div class="k">Duplex</div><div>${data.duplex}</div></div>` : ""}
+        ${(data.ports_seen || []).length ? `<div class="kv"><div class="k">Observed switch ports</div><div>${data.ports_seen.join(", ")}</div></div>` : ""}
+
         <div class="kv"><div class="k">Confidence</div><div>${((data.identity?.confidence || 0) * 100).toFixed(0)}%</div></div>
         <div class="kv"><div class="k">Hostname</div><div>${data.hostname || "unknown"}</div></div>
-        <div class="kv"><div class="k">Domain</div><div>${data.domain || "unknown"}</div></div>
-        <div class="kv"><div class="k">DNS answer</div><div>${data.dns_answer_name || "none"}</div></div>
+
+        ${!isL2Node ? `
+            <div class="kv"><div class="k">Domain</div><div>${data.domain || "unknown"}</div></div>
+            <div class="kv"><div class="k">DNS answer</div><div>${data.dns_answer_name || "none"}</div></div>
+        ` : ""}
+
         <div class="kv"><div class="k">Name</div><div>${data.display_name || n.label || n.id}</div></div>
         <div class="kv"><div class="k">MAC</div><div>${data.mac || "unknown"}</div></div>
         <div class="kv"><div class="k">Access path</div><div>${data.access_path || "unknown"}</div></div>
+
         ${["local_device", "gateway"].includes(n.group) ? `
             <div class="row">
                 <button onclick="setAccessPathForSelected('switch')">Set Switch Path</button>
@@ -300,63 +331,82 @@ function showNodeInfo(n) {
             </div>
             <button onclick="setAccessPathForSelected(null)">Auto Access Path</button>
         ` : ""}
+
         <div class="kv"><div class="k">Packets</div><div>${data.packets || 0}</div></div>
         <div class="kv"><div class="k">Bytes</div><div>${data.bytes || 0}</div></div>
         <div class="kv"><div class="k">Importance</div><div>${(data.importance || 0).toFixed(2)}</div></div>
         <div class="kv"><div class="k">Risk</div><div>${(data.risk || 0).toFixed(2)}</div></div>
+
         ${(data.risk_findings || []).length ? `
-        <hr>
-        <div class="muted">Risk findings</div>
-        <div>
-            ${(data.risk_findings || []).map(f => `
-                <div class="event-line">
-                    <b>${f.kind}</b>
-                    <span class="badge">${f.severity || "medium"}</span>
-                    <span class="badge">${f.points || 0} pts</span><br>
-                    ${f.reason || ""}
-                    ${f.evidence ? `<br><span class="muted">${JSON.stringify(f.evidence)}</span>` : ""}
-                </div>
-            `).join("")}
-        </div>
-    ` : ""}
-        <div class="kv"><div class="k">Targets</div><div>${data.target_count || 0}</div></div>
-        <div class="kv"><div class="k">Scan ports</div><div>${data.scan_port_count || 0}</div></div>
-        <div class="kv"><div class="k">External</div><div>${data.external_target_count || 0}</div></div>
-        <div class="kv"><div class="k">DNS domains</div><div>${data.dns_domain_count || 0}</div></div>
+            <hr>
+            <div class="muted">Risk findings</div>
+            <div>
+                ${(data.risk_findings || []).map(f => `
+                    <div class="event-line">
+                        <b>${f.kind}</b>
+                        <span class="badge">${f.severity || "medium"}</span>
+                        <span class="badge">${f.points || 0} pts</span><br>
+                        ${f.reason || ""}
+                        ${f.evidence ? `<br><div>${formatEvidence(f.evidence)}</div>` : ""}
+                    </div>
+                `).join("")}
+            </div>
+        ` : ""}
+
+        ${!isL2Node ? `
+            <div class="kv"><div class="k">Targets</div><div>${data.target_count || 0}</div></div>
+            <div class="kv"><div class="k">Scan ports</div><div>${data.scan_port_count || 0}</div></div>
+            <div class="kv"><div class="k">External</div><div>${data.external_target_count || 0}</div></div>
+            <div class="kv"><div class="k">DNS domains</div><div>${data.dns_domain_count || 0}</div></div>
+        ` : ""}
+
         ${data.interfaces ? `
-        <hr>
-        <div class="muted">Switch interfaces / L2 MACs</div>
-        <div>
-            ${Object.values(data.interfaces).map(iface => `
-                <div class="event-line">
-                    <b>${iface.mac}</b><br>
-                    Packets: ${iface.packets || 0} | Bytes: ${iface.bytes || 0}<br>
-                    ${Object.entries(iface.protocols || {})
-                        .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
-                        .join("")}
-                </div>
-            `).join("")}
-        </div>
-    ` : ""}
-        <hr>
-        <div class="muted">DNS names seen</div>
-        <div>
-            ${(data.dns_names || []).map(h => `<span class="badge">${h}</span>`).join("") || `<span class="muted">No DNS names seen</span>`}
-        </div>
-        
-        <hr>
+            <hr>
+            <div class="muted">Switch interfaces / L2 MACs</div>
+            <div>
+                ${Object.values(data.interfaces).map(iface => `
+                    <div class="event-line">
+                        <b>${iface.mac}</b><br>
+                        Packets: ${iface.packets || 0} | Bytes: ${iface.bytes || 0}<br>
+                        ${Object.entries(iface.protocols || {})
+                            .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                            .join("")}
+                    </div>
+                `).join("")}
+            </div>
+        ` : ""}
 
-        <div>
-            ${(data.ports || []).map(p => `<span class="badge">${p}</span>`).join("") || `<span class="muted">No ports tracked</span>`}
-        </div>
+        ${!isL2Node ? `
+            <hr>
+            <div class="muted">DNS names seen</div>
+            <div>
+                ${(data.dns_names || []).map(h => `<span class="badge">${h}</span>`).join("") || `<span class="muted">No DNS names seen</span>`}
+            </div>
 
-        <hr>
+            <hr>
+            <div class="muted">Ports</div>
+            <div>
+                ${(data.ports || []).map(p => `<span class="badge">${p}</span>`).join("") || `<span class="muted">No ports tracked</span>`}
+            </div>
+        ` : `
+            <hr>
+            <div class="muted">Layer 2 control protocols</div>
+            <div>
+                ${Object.entries(data.protocols || {})
+                    .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                    .join("") || `<span class="muted">No L2 protocols seen</span>`}
+            </div>
+        `}
 
-        <div>
-            ${Object.entries(data.protocols || {})
-                .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
-                .join("")}
-        </div>
+        ${!isL2Node ? `
+            <hr>
+            <div class="muted">Protocols</div>
+            <div>
+                ${Object.entries(data.protocols || {})
+                    .map(([k, v]) => `<span class="badge">${k}: ${v}</span>`)
+                    .join("")}
+            </div>
+        ` : ""}
 
         ${flags.length ? `
             <hr>

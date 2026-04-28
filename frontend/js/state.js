@@ -24,12 +24,16 @@ const TCP_SERVICES = new Set([
     "ftp-data",
     "telnet",
     "smtp",
+    "smtps",
     "pop3",
+    "pop3s",
     "imap",
+    "imaps",
     "smb",
     "msrpc",
     "ldap",
     "ldaps",
+    "kerberos",
     "rdp",
     "vnc",
     "winrm",
@@ -44,7 +48,10 @@ const TCP_SERVICES = new Set([
     "http-proxy",
     "redis",
     "elasticsearch",
-    "mongodb"
+    "mongodb",
+    "mqtt",
+    "sip",
+    "sips"
 ]);
 
 const UDP_SERVICES = new Set([
@@ -57,23 +64,46 @@ const UDP_SERVICES = new Set([
     "snmptrap",
     "syslog",
     "ike",
+    "ipsec-nat-t",
     "quic",
     "ssdp",
     "mdns",
     "llmnr",
     "netbios-ns",
     "netbios-dgm",
-    "bacnet",
-    "omron-fins",
-    "ethernet-ip-implicit",
-    "ws-discovery",
-    "mdns",
     "radius",
     "radius-acct",
     "sip",
     "sips",
-    "ike",
-    "ipsec-nat-t"
+    "ws-discovery",
+
+    // Routing / control-plane
+    "ospf",
+    "eigrp",
+    "rip",
+    "vrrp",
+    "hsrp",
+    "glbp",
+    "igmp",
+    "pim",
+
+    // OT / ICS
+    "bacnet",
+    "omron-fins",
+    "ethernet-ip",
+    "ethernet-ip-implicit",
+    "modbus",
+    "dnp3",
+    "s7comm",
+    "opc-ua",
+    "iec-104",
+    "profinet",
+    "fox",
+    "codesys",
+    "ge-srtp",
+    "proconos",
+    "pcworx",
+    "redlion-crimson"
 ]);
 
 let camera = JSON.parse(localStorage.getItem("nm:camera") || JSON.stringify({
