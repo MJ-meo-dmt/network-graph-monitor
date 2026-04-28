@@ -4,37 +4,39 @@
 
 The system should answer:
 
-* What is talking?
-* What role does it have?
-* What changed?
-* What looks unusual?
-* What behaviour pattern is forming?
+- What is talking?
+- What role does it have?
+- What changed?
+- What looks unusual?
+- What behaviour pattern is forming?
 
 **Detection and intelligence are first-class features.**
 
 ---
 
-**Focus: Topology + Detection + Intelligence**
+# Focus
+Topology + Detection + Intelligence
 
-## 1. Core Sanity Checks
+---
 
-* [x] Switch identity stable (name, role, OS, confidence)
-* [x] Gateway detection + override working
-* [x] DNS routing behaves correctly
-* [x] Full path highlighting works (multi-hop tracing)
-* [x] Graph rendering stable
-* [x] Session/state system working
+## 1. Core System
+
+- [x] Packet capture working
+- [x] Graph rendering stable
+- [x] Session/state system working
+- [x] Gateway detection + override
+- [x] DNS routing behaviour correct
+- [x] Multi-hop path highlighting
 
 ---
 
 ## 2. Identity & Device Intelligence
 
-* [ ] Persist device identity across sessions
-
-  * [ ] MAC → name mapping
-  * [ ] Manual rename support
-* [ ] Improve confidence scoring tuning
-* [ ] Improve naming fallback logic (reduce generic names)
+- [ ] Persist identity across sessions
+  - [ ] MAC → name mapping
+  - [ ] Manual rename support
+- [ ] Improve confidence scoring
+- [ ] Improve naming fallback logic
 
 ---
 
@@ -42,92 +44,61 @@ The system should answer:
 
 ### Current
 
-* [x] Detect switch / Layer 2 devices
-* [x] L2 protocol detection (STP, CDP, LLDP, etc.)
-* [x] OUI vendor lookup for switches
-* [x] CDP metadata parsing:
+- [x] Switch detection
+- [x] STP / CDP / LLDP detection
+- [x] OUI vendor lookup
+- [x] Switch metadata UI
 
-  * [x] Hostname
-  * [x] Platform
-  * [x] Capabilities
-  * [x] Port ID
-* [x] Display switch metadata in UI
+### CDP Expansion
 
-### Improvements
+- [x] Device ID (true hostname)
+- [x] Use as primary name
+- [x] Management IP
+- [x] Software version
+- [x] VTP domain
+- [x] Duplex
+- [x] Clean separation of fields
 
-* [ ] Improve L2 protocol formatting (spacing, readability)
-* [ ] Validate LLDP parsing (ensure not CDP-only)
+### LLDP (Next)
 
-#### CDP Expansion
+- [ ] Chassis ID
+- [ ] System name
+- [ ] System description
+- [ ] Management address
+- [ ] Capabilities
 
-* [ ] Extract CDP Device ID (true hostname)
-* [ ] Use Device ID as primary switch name
-* [ ] Extract management IP
-* [ ] Extract software version
-* [ ] Extract VTP domain
-* [ ] Extract duplex
-* [ ] Keep VTP domain separate from Device ID
+### Topology
 
-#### LLDP Expansion
-
-* [ ] Extract chassis ID
-* [ ] Extract system name
-* [ ] Extract system description
-* [ ] Extract management address
-* [ ] Extract capabilities
-
-#### Port-Level Topology
-
-* [ ] Map `MAC → switch port`
-* [ ] Track `IP → MAC`
-* [ ] Infer device → switch port
-* [ ] Show devices behind switch ports
-* [ ] Add neighbor awareness (CDP/LLDP relationships)
+- [ ] MAC → switch port mapping
+- [ ] IP → MAC tracking
+- [ ] Device → port inference
+- [ ] Devices behind switch ports
+- [ ] CDP/LLDP neighbor graph
 
 ---
 
 ## 4. Routing / Control-Plane Detection
 
-### OSPF
+### Implemented
 
-* [ ] Detect OSPFv2 (IP proto 89)
-* [ ] Detect OSPFv3 (IPv6)
-* [ ] Parse packet types (Hello, DBD, LSR, LSU, LSAck)
-* [ ] Extract router ID and area
-* [ ] Tag `category = routing`
-* [ ] Add badge + filter
-* [ ] Style as control-plane
+- [x] OSPF (v2/v3)
+- [x] EIGRP
+- [x] RIP
+- [x] VRRP / HSRP / GLBP
+- [x] IGMP / PIM
+- [x] Routing category tagging
+- [x] Control-plane classification
 
-### EIGRP
+### Improvements
 
-* [ ] Detect (IP proto 88)
-* [ ] Parse opcode (Hello, Update, Query, Reply)
-* [ ] Add badge + filter
-
-### RIP
-
-* [ ] Detect UDP 520
-* [ ] Detect multicast `224.0.0.9`
-* [ ] Add badge + filter
-
-### VRRP / HSRP / GLBP
-
-* [ ] VRRP (IP proto 112)
-* [ ] HSRP (UDP 1985)
-* [ ] GLBP (UDP 3222)
-* [ ] Extract group/state
-* [ ] Tag as gateway redundancy
-* [ ] Add badges + filters
-
-### Multicast / Infra
-
-* [ ] IGMP detection
-* [ ] PIM (IP proto 103)
-* [ ] Tag multicast control-plane
+- [ ] Extract protocol-specific fields (state, group, etc.)
+- [ ] Add UI badges
+- [ ] Add filtering
 
 ### Deferred
 
-* [ ] BGP (ignore for now — WAN side)
+- [ ] BGP
+- [ ] IS-IS
 
 ---
 
@@ -135,311 +106,268 @@ The system should answer:
 
 ### Current
 
-* [x] Traffic-based node heat coloring
-* [x] Top talker filtering:
-
-  * [x] Top 5
-  * [x] Top 10
-  * [x] Top 20
-  * [ ] Add Local / External / Both
+- [x] Node heat coloring
+- [x] Top talker filtering
 
 ### Improvements
 
-* [ ] Refine suspicious/risk scoring
-* [ ] Detect sudden traffic spikes
-* [ ] Detect unusual protocol mixes
+- [ ] Traffic spike detection
+- [ ] Protocol anomaly detection
+- [ ] Improve scoring quality
 
 ---
 
 ## 6. Detection & Intelligence Engine
 
-### Foundation
+### Heuristics Engine
 
-* [ ] Create `heuristics.py`
-* [ ] Run on graph state (not packets)
-* [ ] Output:
+- [x] `heuristics.py` implemented
+- [x] Runs on graph state
+- [x] Node + edge scoring
+- [x] Confidence levels
+- [x] Structured findings (flags, reasons, evidence)
 
-  * node flags
-  * edge flags
-  * suspicion scores
-  * reasons
-  * confidence
+### Implemented Detections
 
-### Categories
+- [x] Beaconing / C2
+- [x] DNS anomaly
+- [x] Fan-out / scanning
+- [x] Lateral movement
+- [x] Exfil-like behaviour
+- [x] Tor / anonymity hints
+- [x] Crypto/mining hints
+- [x] Routing-aware suppression
 
-* [ ] normal
-* [ ] routing
-* [ ] switching
-* [ ] dns
-* [ ] crypto
-* [ ] anonymity
-* [ ] remote_access
-* [ ] lateral_movement
-* [ ] possible_c2
-* [ ] possible_exfil
-* [ ] suspicious
+### Improvements
+
+- [ ] Role-aware scoring (gateway, DNS, admin box)
+- [ ] Signal correlation boosts
+- [ ] Allowlist / watchlist
+- [ ] Configurable thresholds
 
 ---
 
 ## 7. Behaviour Detection
 
-### Beaconing / C2
+### Beaconing
 
-* [ ] Detect repeated connections to same destination
-* [ ] Detect consistent intervals
-* [ ] Detect low-volume periodic traffic
-* [ ] Flag `possible_c2`
+- [x] Interval detection
+- [x] Jitter calculation
+- [x] Repeated destination detection
+- [ ] Add duration tracking
+- [ ] Add volume context
 
-### DNS Anomalies
+### DNS
 
-* [ ] Domain entropy calculation
-* [ ] Detect long/random subdomains
-* [ ] Detect NXDOMAIN bursts
-* [ ] Flag:
-
-  * `dns_anomaly`
-  * `dns_tunnel`
-  * `dns_exfil`
+- [x] Entropy detection
+- [x] Suspicious TLDs
+- [x] Long/high-entropy labels
+- [ ] NXDOMAIN tracking
+- [ ] Burst detection
 
 ### Lateral Movement
 
-* [ ] Detect internal fan-out
-* [ ] Detect SMB/RDP/WinRM bursts
-* [ ] Flag `lateral_movement`
+- [x] Internal fan-out
+- [x] Admin protocol spread
 
 ### Exfiltration
 
-* [ ] Detect large outbound transfers
-* [ ] Detect new external destinations
-* [ ] Flag `possible_exfil`
+- [ ] Detect large outbound flows
+- [ ] Detect rare destinations
+- [ ] Detect upload-heavy ratios
 
 ### Scanning
 
-* [ ] Detect port scanning
-* [ ] Detect host sweeps
-* [ ] Flag `scan_like`
+- [x] Port scanning
+- [x] Host sweep detection
 
 ---
 
-## 8. TOR / Anonymity Detection
+## 8. TOR / Anonymity
 
-* [ ] Optional Tor relay list
-* [ ] Detect long-lived TLS connections
-* [ ] Detect no-DNS encrypted traffic
-* [ ] Detect multiple external peers
-* [ ] Tag `anonymity`
-* [ ] Flag `tor_like`
-* [ ] Add badge + filter
-
----
-
-## 9. Crypto / Mining Detection
-
-### Ports
-
-* [ ] 8333 (Bitcoin)
-* [ ] 30303 (Ethereum)
-* [ ] 3333 / 4444 / 5555 (Stratum)
-
-### Behaviour
-
-* [ ] Persistent peer connections
-* [ ] Distributed external peers
-* [ ] High-frequency small packets
-* [ ] Flag `crypto_like`
-* [ ] Flag `possible_mining`
-* [ ] Add badge + filter
+- [x] Tor ports
+- [x] Weak TLS 443 detection
+- [x] Multi-peer encrypted traffic
+- [ ] Long-lived TLS detection
+- [ ] No-DNS encrypted detection
+- [ ] Optional Tor relay dataset
 
 ---
 
-## 10. Malware / Attacker Patterns
+## 9. Crypto / Mining
 
-### Remote Access
-
-* [ ] Monitor RDP, SSH, WinRM, VNC, Telnet
-* [ ] Flag unusual access
-
-### Windows Lateral Movement
-
-* [ ] SMB, NetBIOS, LDAP, Kerberos
-* [ ] Flag admin fan-out
-
-### Suspicious Web / C2
-
-* [ ] HTTPS to rare domains
-* [ ] HTTP to IP
-* [ ] WebSocket-like persistence
-* [ ] Flag suspicious beaconing
-
-### Covert Channels
-
-* [ ] ICMP anomaly detection
-* [ ] Flag `icmp_tunnel_like`
+- [x] Known crypto ports
+- [x] Multi-peer detection
+- [ ] Persistent peer analysis
+- [ ] Mining pattern detection
 
 ---
 
-## 11. Graph Pattern Intelligence
+## 10. Attacker Behaviour Patterns
 
-* [ ] Detect star (C2)
-* [ ] Detect mesh (crypto/P2P)
-* [ ] Detect fan-out (lateral)
-* [ ] Detect persistent edges
-* [ ] Detect topology shifts
+- [x] Remote access detection
+- [x] Windows lateral movement
+- [ ] Suspicious HTTPS patterns
+- [ ] HTTP-to-IP detection
+- [ ] WebSocket persistence
+- [ ] ICMP covert channels
+
+---
+
+## 11. Graph Intelligence
+
+- [ ] Star pattern (C2)
+- [ ] Mesh (crypto/P2P)
+- [ ] Fan-out patterns
+- [ ] Persistent edges
+- [ ] Topology shifts
 
 ---
 
 ## 12. Scoring System
 
-### Node
-
-* [ ] `node.suspicion_score`
-* [ ] flags + reasons
-
-### Edge
-
-* [ ] `edge.suspicion_score`
-* [ ] flags + reasons
-
-### Confidence
-
-* [ ] low / medium / high
-* [ ] Prefer “possible_*” labels
-
----
-
-## 13. UI / UX Improvements
-
-### Current
-
-* [x] Panel collapse / minimize
-* [x] Layout export / import
-* [x] Improved arrow visibility
+- [x] Node scoring
+- [x] Edge scoring
+- [x] Confidence levels
 
 ### Improvements
 
-* [ ] Improve node labeling clarity
-* [ ] Reduce visual clutter
-* [ ] Smarter label visibility
-* [ ] Zoom-based rendering adjustments
-* [ ] Improve edge highlighting
-
-### Intelligence UI
-
-* [ ] Add badges:
-
-  * Routing / TOR / CRYPTO / C2 / EXFIL / SCAN / LATERAL
-* [ ] Add node/edge intelligence panel:
-
-  * score
-  * flags
-  * reasons
-  * confidence
-* [ ] Suspicious node/edge styling
+- [ ] Combine signals
+- [ ] Reduce noise
+- [ ] Dynamic baselines
 
 ---
 
-## 14. Filtering & Exploration
+## 13. UI / UX
 
-### Existing
+### Current
 
-* [x] Protocol filtering
-* [x] Service filtering
-* [x] Edge visibility toggles
+- [x] Panels working
+- [x] Layout system
+- [x] Node info panel
+- [x] Intelligence display
+- [x] Clean L2 node handling
 
-### New
+### Improvements
 
-#### Free-form Protocol Filter
+- [ ] Visual clutter reduction
+- [ ] Zoom-based detail
+- [ ] Better label control
 
-* [ ] Input box for protocol/service search
-* [ ] Combine with existing filters
+### Intelligence UI
 
-#### Wireshark-style (Lite)
+- [ ] Add badges:
+  - Routing
+  - C2
+  - DNS anomaly
+  - Lateral movement
+  - Crypto
+  - Tor
 
-* [ ] Add advanced filter input
-* [ ] Support:
+---
 
-  * `ip == x`
-  * `port == x`
-  * `protocol == x`
-  * `domain contains x`
-  * `flag == possible_c2`
-  * `score > 70`
+## 14. Filtering
 
-> ⚠ Keep lightweight — no full parser
+### Current
+
+- [x] Protocol filtering
+- [x] Port filtering
+- [x] Path-aware filtering
+- [x] Edge visibility logic
+
+### Next
+
+- [ ] Wireshark-lite filters:
+  - `ip == x`
+  - `port == x`
+  - `protocol == x`
+  - `flag == x`
+  - `score > x`
 
 ---
 
 ## 15. Data & Persistence
 
-* [ ] Persist UI state:
-
-  * filters
-  * gateway override
-  * layout
-* [ ] Persist learned device identity
+- [ ] Persist UI state
+- [ ] Persist identity learning
 
 ---
 
 ## 16. Backend Improvements
 
-* [ ] Optional `AsyncSniffer`
-* [ ] Improve logging/error handling
-* [ ] Optimize large graph performance
+- [ ] Async capture option
+- [ ] Logging improvements
+- [ ] Performance optimization
 
 ---
 
-## 17. Data Enrichment (Later)
+## 17. Data Enrichment
 
-* [ ] Tor relay list
-* [ ] Mining pool list
-* [ ] ASN tagging
-* [ ] Allowlist / blocklist
-* [ ] Known asset tagging
+- [ ] ASN tagging
+- [ ] Tor / mining datasets
+- [ ] Allowlist / blocklist
+- [ ] Asset tagging
 
 ---
 
 ## 18. Performance & Safety
 
-* [ ] Keep capture loop lightweight
-* [ ] Run heuristics async
-* [ ] Cache entropy/lookups
-* [ ] Limit history window
-* [ ] Config toggles for heavy checks
+- [x] Lightweight capture loop
+- [x] Cached lookups
+- [ ] Async heuristics
+- [ ] History window limits
+- [ ] Config toggles
 
 ---
 
 ## 19. Nice-to-Have
 
-* [ ] Export graph snapshot (JSON)
-* [ ] API endpoints
-* [ ] Theme toggle
+- [ ] Export graph JSON
+- [ ] API endpoints
+- [ ] Theme toggle
 
 ---
 
-## 20. Priority Roadmap
+## 20. Architecture & Code Structure
 
-### Immediate
+### State
 
-1. CDP expansion
-2. OSPF detection
-3. EIGRP + HSRP/VRRP
-4. Free-form filter
-5. Wireshark-lite filter
-6. `heuristics.py` foundation
-7. DNS entropy
-8. Beaconing detection
+- [x] Central schema (`state_schema.py`)
+- [x] Consistent normalization
 
-### Next
+### Network Utilities (`net_utils.py`)
 
-9. Scoring system
-10. UI badges + intelligence panel
-11. Category/flag filters
+- [x] IP classification
+- [x] DNS helpers
+- [x] Reverse DNS
+- [x] String cleanup
+- [x] Flow keys
+- [x] Domain/hostname handling
 
-### Later
+### Ports (`net_ports.py`)
 
-12. Crypto + TOR detection
-13. Lateral movement
-14. Exfiltration
-15. External intel feeds
+- [x] Centralized definitions
+- [x] Role-based grouping
+- [x] Detection reuse
+
+### Graph Builder
+
+- [x] Clean separation (logic vs UI)
+- [x] Shared utility usage
+
+### Intelligence Integration
+
+- [x] Heuristics injected
+- [x] Node/edge intelligence attached
+- [x] UI consumes intelligence
 
 ---
+
+## 21. Recent Fixes
+
+- [x] Removed service dropdown
+- [x] Fixed stats panel
+- [x] Fixed filtering path logic
+- [x] Fixed missing nodes in filtered view
+- [x] Improved switch node UI
+- [x] Cleaned risk evidence display

@@ -8,12 +8,20 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 
 `Designed for network engineers and security analysts in lab and local environments.`
 
-> Packets → Analyzer → State → Graph Builder → UI
+Unlike traditional packet analyzers, this tool focuses on:
+- Topology awareness
+- Behavioral patterns
+- Visual intelligence
 
 ## Features
 
+> The system prioritizes visual understanding and behavioral insight over raw packet inspection.
+
+> Packets → Analyzer → State → Graph Builder → UI
+
 - Live packet capture using Scapy
 - Interactive browser-based network graph with real-time updates
+- Fully local analysis (no cloud dependency)
 
 ### Network Topology & Visualization
 
@@ -43,6 +51,18 @@ It models real-world network behavior including gateway routing, switch/L2 paths
   - Domain attribution only where resolution is confirmed
   - Reverse-DNS noise filtering for `in-addr.arpa` / `ip6.arpa`
 
+### Routing & Control-Plane Awareness
+
+- Detection of routing protocols:
+  - OSPF (v2 / v3)
+  - EIGRP
+  - RIP
+  - VRRP / HSRP / GLBP
+  - IGMP / PIM
+- Control-plane traffic classification:
+  - Separated from normal data-plane traffic
+  - Not treated as suspicious by default
+
 ### Layer 2 Awareness
 
 - Detection of Layer 2 control traffic:
@@ -54,6 +74,12 @@ It models real-world network behavior including gateway routing, switch/L2 paths
   - Platform / model hints
   - Capabilities
   - Observed switch port IDs
+- Extended CDP metadata:
+  - Device ID (true hostname)
+  - Management IP
+  - Software version
+  - VTP domain
+  - Duplex
 - Switch identity enrichment:
   - OUI-based vendor lookup
   - Network switch role inference
@@ -69,7 +95,10 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - Protocol-based filtering:
   - TCP / UDP transport filtering
   - Higher-level protocol filtering
-- Service-based filtering via dropdown
+- Port-based filtering (primary)
+- Path-aware filtering:
+  - Keeps full communication paths visible
+  - Preserves switch/gateway/external routing chains
 - IPv6 show/hide toggle
 - Edge label visibility toggle
 - Logical edge visibility toggle
@@ -81,7 +110,6 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - Search filters:
   - IP
   - Port
-  - Service
 
 ### Visual Clarity & Layout
 
@@ -108,10 +136,39 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 ### Enrichment & Analysis
 
 - Vendor lookup via IEEE OUI database
-- Basic risk / suspicious behavior scoring
-- Connection-level breakdown per visual edge
+- Connection-level breakdown per edge
 - DNS query visibility per edge
 - Domain filtering for noisy reverse-DNS lookups
+
+### Detection & Intelligence
+
+- Heuristic-based behavior detection (not signature-based)
+- Explainable findings (no black-box scoring)
+- Node and edge intelligence:
+  - Suspicion scores (0–100)
+  - Flags and categories
+  - Human-readable reasoning
+  - Confidence levels (low / medium / high)
+- Detection categories:
+  - DNS anomalies (entropy, suspicious domains)
+  - Beaconing / possible command-and-control (C2)
+  - Lateral movement (internal fan-out, admin protocols)
+  - Scanning behavior (port/host sweeps)
+  - Exfiltration-like patterns
+  - Tor / anonymity indicators
+  - Crypto / mining indicators
+  - Routing/control-plane awareness (non-suspicious context)
+
+> Detection is intentionally heuristic and explainable — not signature-based.
+
+### Example Insights
+
+- "Device 192.168.8.129 is beaconing every 60 seconds to an external host"
+- "Host A is communicating with many internal devices over SMB/RDP (possible lateral movement)"
+- "High-entropy DNS traffic suggests possible tunneling"
+- "Multiple encrypted connections to many external peers (possible anonymity network or P2P)"
+
+> Designed to surface behavior and intent — not just packets.
 
 ## Use Cases
 
@@ -120,6 +177,9 @@ It models real-world network behavior including gateway routing, switch/L2 paths
 - Understanding application communication patterns
 - Identifying noisy or suspicious devices
 - Observing DNS and service usage patterns
+- Detecting suspicious or anomalous behavior without deep packet inspection
+- Identifying beaconing / C2-like communication patterns
+- Visualizing routing and control-plane activity
 
 ## Requirements
 
@@ -135,12 +195,14 @@ Network_graph/
 │  ├─ server.py
 │  ├─ config.py
 │  ├─ net_ports.py
+│  ├─ net_utils.py
 │  ├─ capture.py
 │  ├─ analyzer.py
 │  ├─ graph_builder.py
 │  ├─ identity.py
 │  ├─ session_manager.py
 │  ├─ heuristics.py
+│  ├─ state_schema.py
 │  └─ sessions/
 ├─ data/
 │  └─ oui/
@@ -229,7 +291,7 @@ Start capture from the UI.
 
 ## Status
 
-`Experimental / lab tool.`
+`Early-stage / lab-focused tool. Designed for controlled environments, testing, and iterative development.`
 
 The goal is not to *replace* Wireshark, but to provide a topology-aware visual understanding of network behavior and communication patterns.
 
@@ -265,6 +327,8 @@ All design decisions, integration, and validation were performed by the author.
 
 ## Preview
 
+![Preview](docs/screenshot_detection_badges.png)
+![Preview](docs/screenshot_heatmap_edge.png)
 ![Preview](docs/screenshot.png)
 ![Preview](docs/screenshot_node.png)
 ![Preview](docs/screenshot_edge.png)
