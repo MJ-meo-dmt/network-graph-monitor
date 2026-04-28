@@ -1,3 +1,5 @@
+// ui.js
+
 function syncEdges(newEdges) {
     const incoming = new Set();
 

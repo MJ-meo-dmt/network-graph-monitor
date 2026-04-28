@@ -1,3 +1,5 @@
+// utils.js
+
 function short(s, max = 48) {
     return s && s.length > max ? s.slice(0, max) + "…" : s;
 }

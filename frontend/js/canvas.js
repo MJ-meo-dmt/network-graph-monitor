@@ -1,3 +1,4 @@
+// canvas.js
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
