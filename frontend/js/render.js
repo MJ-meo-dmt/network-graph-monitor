@@ -1,3 +1,5 @@
+// render.js
+
 function nodeColor(group) {
     return group === "external_anchor" ? "#cfcecc" :
            group === "local_anchor" ? "#60a5fa" :
@@ -24,6 +26,14 @@ function edgeColor(type) {
            type === "http" ? "rgba(249,115,22,0.78)" :
            type === "tls" ? "rgba(34,197,94,0.60)" :
            type === "scan" ? "rgba(244,63,94,0.86)" :
+           type === "ospf" ? "rgba(14,165,233,0.85)" :
+           type === "eigrp" ? "rgba(59,130,246,0.85)" :
+           type === "rip" ? "rgba(125,211,252,0.80)" :
+           type === "vrrp" ? "rgba(251,191,36,0.80)" :
+           type === "hsrp" ? "rgba(251,146,60,0.80)" :
+           type === "glbp" ? "rgba(250,204,21,0.80)" :
+           type === "igmp" ? "rgba(192,132,252,0.75)" :
+           type === "pim" ? "rgba(168,85,247,0.75)" :
            "rgba(148,163,184,0.35)";
 }
 
@@ -222,8 +232,7 @@ function drawEdges() {
         let width = 1;
 
         
-        if (packets > 2500 || bytes > 5000000) {
-                // Reduced growth rate
+        if (packets > 1500 || bytes > 4000000) {
             const packetWidth = Math.log10(packets / 1200) * 2.5;
             const byteWidth = Math.log10(bytes / 3500000) * 4.0;
 

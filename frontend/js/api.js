@@ -25,7 +25,6 @@ async function fetchGraph() {
         syncEdges(newGraph.edges || []);
         visibleEdgesDirty = true;
         syncNodes();
-        updateServiceFilterOptions();
 
         document.getElementById("status").innerText =
             `Live | Nodes: ${graph.stats.total_nodes} | Edges: ${graph.stats.total_edges} | Gateway: ${graph.stats.gateway || "unknown"}`;
