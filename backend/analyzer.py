@@ -1,3 +1,5 @@
+# analyzer.py
+
 import time
 from scapy.all import IP, IPv6, Ether, TCP, UDP, DNS, DNSQR, ARP, ICMP
 from scapy.all import Dot3, LLC, SNAP, Dot1Q
