@@ -224,4 +224,38 @@ PORT_ROLE_HINTS = {
     1900: "UPnP device",
 }
 
+ROUTING_IP_PROTOCOLS = {
+    88: "eigrp",
+    89: "ospf",
+    103: "pim",
+    112: "vrrp",
+}
+
+ROUTING_UDP_PORTS = {
+    520: "rip",
+    1985: "hsrp",
+    3222: "glbp",
+}
+
+ROUTING_MULTICASTS = {
+    "224.0.0.5": "ospf_all_routers",
+    "224.0.0.6": "ospf_dr_routers",
+    "224.0.0.9": "rip",
+    "224.0.0.10": "eigrp",
+    "224.0.0.13": "pim",
+    "224.0.0.18": "vrrp",
+    "224.0.0.2": "hsrp",
+    "224.0.0.102": "hsrp_v2",
+}
+
+ROUTING_PROTOCOL_LABELS = {
+    "ospf": "OSPF",
+    "eigrp": "EIGRP",
+    "rip": "RIP",
+    "vrrp": "VRRP",
+    "hsrp": "HSRP",
+    "glbp": "GLBP",
+    "igmp": "IGMP",
+    "pim": "PIM",
+}
 

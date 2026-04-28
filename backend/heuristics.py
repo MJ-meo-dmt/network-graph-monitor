@@ -589,6 +589,7 @@ def run_heuristics(state):
     node_findings = {}
     edge_findings = {}
 
+    detect_routing_control_plane(state, node_findings, edge_findings)
     detect_beaconing(state, node_findings, edge_findings, now)
     detect_dns_anomalies(state, node_findings, edge_findings)
     detect_fanout_and_scanning(state, node_findings, edge_findings)
@@ -601,3 +602,31 @@ def run_heuristics(state):
         "summary": summarize_findings(node_findings, edge_findings),
         "generated_at": now
     }
+
+def detect_routing_control_plane(state, node_findings, edge_findings):
+    routing_by_src = defaultdict(set)
+
+    for flow in state.get("flows", {}).values():
+        if flow.get("category") != "routing":
+            continue
+
+        src = flow.get("from")
+        proto = flow.get("routing_protocol") or flow.get("protocol")
+
+        if not src or not proto:
+            continue
+
+        routing_by_src[src].add(proto)
+
+    for src, protocols in routing_by_src.items():
+        add_finding(
+            node_findings,
+            src,
+            "routing_control_plane",
+            0,
+            f"routing/control-plane traffic observed: {', '.join(sorted(protocols))}",
+            category="routing",
+            evidence={
+                "protocols": sorted(protocols)
+            }
+        )
