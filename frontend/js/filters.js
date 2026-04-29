@@ -56,16 +56,25 @@ function edgeVisible(e) {
     function protocolAllowed(p) {
         p = String(p || "unknown").toLowerCase();
 
-        // Transport gates
-        if (isTcpLikeProtocol(p) && !enabled.has("tcp")) return false;
-        if (isUdpLikeProtocol(p) && !enabled.has("udp")) return false;
+        const protocolAliases = {
+            netbios: ["netbios", "netbios-ns", "netbios-dgm", "netbios-ssn"]
+        };
+
+        for (const [group, members] of Object.entries(protocolAliases)) {
+            if (members.includes(p)) {
+                return enabled.has(group);
+            }
+        }
 
         // Specific protocol/service checkbox wins
         if (document.querySelector(`[data-protocol="${p}"]`)) {
             return enabled.has(p);
         }
 
-        // Unknown/unlisted protocols fall under Other
+        // Transport gates
+        if (isTcpLikeProtocol(p)) return enabled.has("tcp");
+        if (isUdpLikeProtocol(p)) return enabled.has("udp");
+
         return enabled.has("unknown");
     }
 
@@ -272,6 +281,7 @@ document.getElementById("toggle-ipv6").addEventListener("change", async (e) => {
     nodeMap = {
         "__external_anchor__": nodeMap["__external_anchor__"],
         "__local_anchor__": nodeMap["__local_anchor__"],
+        "__ipv6_anchor__": nodeMap["__ipv6_anchor__"],
         "__multicast_anchor__": nodeMap["__multicast_anchor__"],
         ...savedPositions
     };

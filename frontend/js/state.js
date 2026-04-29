@@ -1,5 +1,6 @@
 // state.js
 
+let captureStats = {};
 let graph = { nodes: [], edges: [], stats: {} };
 let edgeCache = {};
 let nodeMap = {};
