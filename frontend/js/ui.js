@@ -40,6 +40,7 @@ function syncNodes() {
     const incoming = new Set();
     const savedAnchor = pinnedNodePositions["__external_anchor__"];
     const savedLocalAnchor = pinnedNodePositions["__local_anchor__"];
+    const savedIPv6Anchor = pinnedNodePositions["__ipv6_anchor__"];
     const savedMulticastAnchor = pinnedNodePositions["__multicast_anchor__"];
 
     for (const node of graph.nodes) {
@@ -117,6 +118,28 @@ function syncNodes() {
         };
     }
 
+    if (!nodeMap["__ipv6_anchor__"]) {
+        nodeMap["__ipv6_anchor__"] = {
+            id: "__ipv6_anchor__",
+            label: "IPv6",
+            x: savedIPv6Anchor?.x ?? -120,
+            y: savedIPv6Anchor?.y ?? -520,
+            vx: 0,
+            vy: 0,
+            pulse: 0,
+            pinned: true,
+            virtual: true,
+            group: "ipv6_anchor",
+            data: {
+                ip: "__ipv6_anchor__",
+                identity: {
+                    label_line_1: "IPv6",
+                    label_line_2: "IPv6 gravity anchor"
+                }
+            }
+        };
+    }
+
     if (!nodeMap["__multicast_anchor__"]) {
         nodeMap["__multicast_anchor__"] = {
             id: "__multicast_anchor__",
@@ -143,6 +166,7 @@ function syncNodes() {
         if (
             id === "__external_anchor__" ||
             id === "__local_anchor__" ||
+            id === "__ipv6_anchor__" ||
             id === "__multicast_anchor__"
         ) continue;
 
@@ -150,8 +174,19 @@ function syncNodes() {
             nodeMap[id].missingCount = (nodeMap[id].missingCount || 0) + 1;
             nodeMap[id].stale = true;
 
-            // remove nodes that backend no longer sends
-            if (nodeMap[id].missingCount >= 2) {
+            const ipv6Visible = document.getElementById("toggle-ipv6")?.checked;
+            const isIPv6 = isIPv6NodeId(id);
+
+            const hasLinkedIdentity =
+                (nodeMap[id].data?.linked_ipv4 || []).length ||
+                (nodeMap[id].data?.linked_ipv6 || []).length;
+
+            const removeAfter =
+                isIPv6 && ipv6Visible && hasLinkedIdentity ? 120 :
+                isIPv6 && ipv6Visible ? 30 :
+                2;
+
+            if (nodeMap[id].missingCount >= removeAfter) {
                 delete nodeMap[id];
 
                 if (selectedNode?.id === id) selectedNode = null;
@@ -175,6 +210,9 @@ function updateStatsPanel() {
     const nat = graph.stats.nat || {};
     const tunnels = graph.stats.tunnels || [];
 
+    const cap = captureStats || {};
+    const capProtocols = cap.protocols || {};
+
     document.getElementById("stats-content").innerHTML = `
         <div class="kv"><div class="k">Nodes</div><div>${graph.stats.total_nodes}</div></div>
         <div class="kv"><div class="k">Edges</div><div>${graph.stats.total_edges}</div></div>
@@ -196,6 +234,23 @@ function updateStatsPanel() {
         <div class="kv"><div class="k">Local</div><div>${local}</div></div>
         <div class="kv"><div class="k">External</div><div>${external}</div></div>
         <div class="kv"><div class="k">Suspicious</div><div>${suspicious}</div></div>
+        <hr>
+        <div class="muted">Capture stats</div>
+        <div class="kv"><div class="k">Raw packets</div><div>${cap.raw_packets || 0}</div></div>
+        <div class="kv"><div class="k">Analyzed events</div><div>${cap.analyzed_events || 0}</div></div>
+        <div class="kv"><div class="k">Stored events</div><div>${cap.stored_events || 0}</div></div>
+        <div class="kv"><div class="k">Errors</div><div>${cap.errors || 0}</div></div>
+
+        ${Object.keys(capProtocols).length ? `
+            <div class="muted">Captured protocols</div>
+            <div>
+                ${Object.entries(capProtocols)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 12)
+                    .map(([proto, count]) => `<span class="badge">${proto}: ${count}</span>`)
+                    .join("")}
+            </div>
+        ` : ""}
     `;
 
     const newInput = document.getElementById("gateway-input");
@@ -291,6 +346,19 @@ function showNodeInfo(n) {
         return;
     }
 
+    if (n.id === "__ipv6_anchor__") {
+        const ipv6Nodes = graph.nodes.filter(x => isIPv6NodeId(x.id)).length;
+
+        document.getElementById("info").innerHTML = `
+            <b>IPv6</b><br>
+            <span class="muted">IPv6 summary</span>
+            <hr>
+            <div class="kv"><div class="k">IPv6 nodes</div><div>${ipv6Nodes}</div></div>
+            <div class="kv"><div class="k">Visible</div><div>${document.getElementById("toggle-ipv6")?.checked ? "yes" : "no"}</div></div>
+        `;
+        return;
+    }
+
     document.getElementById("info").innerHTML = `
         <b>${n.label}</b><br>
         <span class="muted">${n.group}</span>
@@ -322,6 +390,12 @@ function showNodeInfo(n) {
 
         <div class="kv"><div class="k">Name</div><div>${data.display_name || n.label || n.id}</div></div>
         <div class="kv"><div class="k">MAC</div><div>${data.mac || "unknown"}</div></div>
+        ${(data.linked_ipv4 || []).length || (data.linked_ipv6 || []).length ? `
+        <div class="kv"><div class="k">Linked addresses</div><div>
+            ${(data.linked_ipv4 || []).map(ip => `<span class="badge">${ip}</span>`).join("")}
+            ${(data.linked_ipv6 || []).map(ip => `<span class="badge">${ip}</span>`).join("")}
+        </div></div>
+        ` : ""}
         <div class="kv"><div class="k">Access path</div><div>${data.access_path || "unknown"}</div></div>
 
         ${["local_device", "gateway"].includes(n.group) ? `
@@ -422,6 +496,7 @@ function showEdgeInfo(e) {
     const connections = data.connections || [];
     const cleanEdgeDomains = cleanDomains(data.domains);
     const cleanDnsQueries = cleanDomains(data.dns_queries);
+    const appHints = data.app_hints || [];
 
     const connectionHtml = connections.slice(0, 40).map((c, index) => {
     const cleanConnectionDomains = cleanDomains(c.domains);
@@ -437,6 +512,12 @@ function showEdgeInfo(e) {
                 Packets: ${c.packets || 0} | Bytes: ${c.bytes || 0}
                 ${(c.ports || []).length ? `<br>Ports: ${(c.ports || []).join(", ")}` : ""}
                 ${cleanConnectionDomains.length ? `<br>Domains: ${cleanConnectionDomains.slice(0, 3).join(", ")}` : ""}
+                ${(c.app_hints || []).length ? `
+                <br>Apps:
+                ${(c.app_hints || []).slice(0, 3).map(h =>
+                    `<span class="badge">${h.name} (${h.confidence || "low"})</span>`
+                ).join("")}
+            ` : ""}
             </div>
         `;
     }).join("");
@@ -463,6 +544,19 @@ function showEdgeInfo(e) {
         ` : ""}
 
         <hr>
+                ${appHints.length ? `
+            <hr>
+            <div class="muted">Likely app / software</div>
+            <div>
+                ${appHints.map(h => `
+                    <div class="event-line">
+                        <b>${h.name}</b>
+                        <span class="badge">${h.confidence || "low"}</span><br>
+                        ${(h.evidence || []).slice(0, 5).map(e => `<span class="badge">${e}</span>`).join("")}
+                    </div>
+                `).join("")}
+            </div>
+        ` : ""}
 
         <div class="muted">Protocols</div>
         <div>

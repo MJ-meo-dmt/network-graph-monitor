@@ -1,5 +1,30 @@
 // utils.js
 
+// Temp for lo
+let loggedNodeCount = 0;
+const loggedNodes = new Set();
+
+function logOnce(node, msg) {
+    // Only log once per unique node
+    if (!loggedNodes.has(node.id)) {
+        console.log(node.id, msg);
+        loggedNodes.add(node.id);
+        loggedNodeCount++;
+    }  
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+function colorLerp(c1, c2, t, alpha = 1) {
+    const r = Math.round(lerp(c1[0], c2[0], t));
+    const g = Math.round(lerp(c1[1], c2[1], t));
+    const b = Math.round(lerp(c1[2], c2[2], t));
+
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function short(s, max = 48) {
     return s && s.length > max ? s.slice(0, max) + "…" : s;
 }

@@ -2,10 +2,11 @@
 
 function nodeColor(group) {
     return group === "external_anchor" ? "#cfcecc" :
-           group === "local_anchor" ? "#60a5fa" :
+           group === "local_anchor" ? "#1368cf" :
+           group === "ipv6_anchor" ? "#22d3ee" :
            group === "multicast_anchor" ? "#c084fc" :
-           group === "gateway" ? "#fbbf24" :
-           group === "local_device" ? "#60a5fa" :
+           group === "gateway" ? "#f7fb24" :
+           group === "local_device" ? "#127fe6" :
            group === "external_host" ? "#94a3b8" :
            group === "broadcast" ? "#a78bfa" :
            group === "multicast" ? "#c084fc" :
@@ -16,30 +17,50 @@ function nodeColor(group) {
 }
 
 function edgeColor(type) {
-    return type === "arp" ? "rgba(251,191,36,0.65)" :
-           type === "mixed" ? "rgba(226,232,240,0.55)" :
-           type === "dns" ? "rgba(52,211,153,0.75)" :
-           type === "quic" ? "rgba(45,212,191,0.70)" :
-           type === "tcp" ? "rgba(96,165,250,0.58)" :
-           type === "udp" ? "rgba(167,139,250,0.58)" :
-           type === "icmp" ? "rgba(248,113,113,0.58)" :
-           type === "http" ? "rgba(249,115,22,0.78)" :
-           type === "tls" ? "rgba(34,197,94,0.60)" :
-           type === "scan" ? "rgba(244,63,94,0.86)" :
-           type === "ospf" ? "rgba(14,165,233,0.85)" :
-           type === "eigrp" ? "rgba(59,130,246,0.85)" :
-           type === "rip" ? "rgba(125,211,252,0.80)" :
-           type === "vrrp" ? "rgba(251,191,36,0.80)" :
-           type === "hsrp" ? "rgba(251,146,60,0.80)" :
-           type === "glbp" ? "rgba(250,204,21,0.80)" :
-           type === "igmp" ? "rgba(192,132,252,0.75)" :
-           type === "pim" ? "rgba(168,85,247,0.75)" :
-           "rgba(148,163,184,0.35)";
-}
+    type = String(type || "unknown").toLowerCase();
 
-// Temp for lo
-let loggedNodeCount = 0;
-const loggedNodes = new Set();
+    const COLORS = {
+        // Core protocols
+        arp:   "rgba(251,191,36,0.65)",   // yellow (L2)
+        dns:   "rgba(52,211,153,0.75)",   // green (resolution)
+        icmp:  "rgba(248,113,113,0.58)",  // red (control)
+
+        // Transport
+        tcp:   "rgba(96,165,250,0.58)",   // blue
+        udp:   "rgba(167,139,250,0.58)",  // purple
+
+        // App / encrypted
+        http:  "rgba(249,115,22,0.78)",   // orange
+        tls:   "rgba(34,197,94,0.60)",    // green
+        quic:  "rgba(45,212,191,0.70)",   // teal
+
+        // Discovery / local noise
+        igmp:  "rgba(192,132,252,0.75)",  // violet
+        ssdp:  "rgba(168,85,247,0.75)",   // purple
+        dhcp:  "rgba(250,204,21,0.75)",   // amber
+        netbios: "rgba(163,163,163,0.65)", // grey-ish (legacy/local)
+
+        // Routing
+        ospf:  "rgba(14,165,233,0.85)",   // cyan
+        eigrp: "rgba(59,130,246,0.85)",   // blue
+        rip:   "rgba(125,211,252,0.80)",  // light blue
+        vrrp:  "rgba(251,191,36,0.80)",   // yellow
+        hsrp:  "rgba(251,146,60,0.80)",   // orange
+        glbp:  "rgba(250,204,21,0.80)",   // amber
+        pim:   "rgba(168,85,247,0.75)",   // purple
+
+        // Special
+        scan:  "rgba(244,63,94,0.86)",    // strong red
+        mixed: "rgba(226,232,240,0.55)",  // neutral
+    };
+
+    // NetBIOS grouping (important)
+    if (type.startsWith("netbios")) {
+        return COLORS.netbios;
+    }
+
+    return COLORS[type] || "rgba(148,163,184,0.5)";
+}
 
 function trafficHeat(n) {
     const packets = Number(n.data?.packets || 0);
@@ -47,57 +68,87 @@ function trafficHeat(n) {
 
     const packetScore = Math.log10(packets + 1) / 8.0;
     const byteScore = Math.log10(bytes + 1) / 12.0;
-    // Only log once per unique node
-    if (!loggedNodes.has(n.id)) {
-        console.log(`Logged Node: ${n.id}`);
-        console.log(`  Packet Score: ${packetScore}`);
-        console.log(`  Byte Score: ${byteScore}`);
-        loggedNodes.add(n.id);
-        loggedNodeCount++;
-    }  
-
+    
     return Math.max(0, Math.min(1, Math.max(packetScore, byteScore)));
 }
 
 // Function to determine edge color based on traffic volume
-function getTrafficEdgeColor(packets, bytes) {
-    // Calculate normalized score (0.0 - 1.0)
-    const packetScore = Math.log10(packets + 1) / 8.0;
-    const byteScore = Math.log10(bytes + 1) / 12.0;
-    const score = Math.max(0, Math.min(1, Math.max(packetScore, byteScore)));
+function getTrafficEdgeColor(n) {
+    const heat = trafficHeat(n);
 
-    // Define color thresholds for traffic intensity
-    // Low (0.0 - 0.4): Subtle Blue (Base)
-    // Medium (0.4 - 0.7): Bright Yellow/Orange (High Visibility)
-    // High (0.7 - 1.0): Red/Hot Orange (Critical Traffic)
-    
-    if (score < 0.4) {
-        // Low Traffic: Calm Blue
-        return `rgba(59, 130, 246, 0.7)`; 
-    } else if (score < 0.7) {
-        // Medium-High Traffic: Warm Yellow/Orange
-        return `rgba(250, 204, 21, 0.85)`;
-    } else {
-        // Very High Traffic: Hot Red/Orange
-        return `rgba(251, 115, 22, 0.95)`;
-    }
+    const stops = [
+        [59, 130, 246],  // blue
+        [45, 212, 191],  // teal
+        [34, 197, 94],   // green
+        [250, 204, 21],  // yellow
+        [249, 115, 22],  // orange
+        [239, 68, 68]    // red
+    ];
+
+    const scaled = heat * (stops.length - 1);
+    const i = Math.floor(scaled);
+    const t = scaled - i;
+
+    const c1 = stops[i];
+    const c2 = stops[Math.min(i + 1, stops.length - 1)];
+
+    const alpha = 0.68 + heat * 0.27;
+
+    return colorLerp(c1, c2, t, alpha);
 }
 
 function nodeTrafficColor(n) {
     const base = nodeColor(n.group);
     const heat = trafficHeat(n);
 
-    if (n.virtual || ["external_anchor", "local_anchor", "multicast_anchor"].includes(n.group)) {
+    if (n.virtual || ["external_anchor", "local_anchor", "ipv6_anchor", "multicast_anchor"].includes(n.group)) {
         return base;
     }
 
-    // Only external hosts get traffic heat colors.
+    // External hosts 
     if (n.group === "external_host") {
-        if (heat < 0.2) return "#a3b0c2"; // grey
-        if (heat < 0.4) return "#84d6fc"; // blue
-        if (heat < 0.6) return "#fdd948"; // yellow
-        if (heat < 0.8) return "#f38c16";
-        return "#ee3f0a";                  // orange red
+        const stops = [
+            [203, 213, 225], // grey
+            [56, 189, 248],  // blue
+            [34, 197, 94],   // green
+            [250, 204, 21],  // yellow
+            [249, 115, 22],  // orange
+            [239, 68, 68]    // red
+        ];
+
+        const scaled = heat * (stops.length - 1);
+        const i = Math.floor(scaled);
+        const t = scaled - i;
+
+        const c1 = stops[i];
+        const c2 = stops[Math.min(i + 1, stops.length - 1)];
+
+        const alpha = 0.68 + heat * 0.27;
+
+        return colorLerp(c1, c2, t, alpha);
+    }
+
+    // Local devices 
+    if (n.group === "local_device") {
+        const stops = [
+            [16, 185, 129],  // emerald (low activity baseline)
+            [56, 189, 248],  // blue
+            [34, 197, 94],   // green
+            [250, 204, 21],  // yellow
+            [249, 115, 22],  // orange
+            [239, 68, 68]    // red
+        ];
+
+        const scaled = heat * (stops.length - 1);
+        const i = Math.floor(scaled);
+        const t = scaled - i;
+
+        const c1 = stops[i];
+        const c2 = stops[Math.min(i + 1, stops.length - 1)];
+
+        const alpha = 0.68 + heat * 0.27;
+
+        return colorLerp(c1, c2, t, alpha);
     }
 
     return base;
@@ -199,7 +250,7 @@ function drawEdges() {
             ctx.strokeStyle = edgeColor(e.type);
         } else {
             // Apply traffic gradient only when usage mode is selected
-            const trafficColor = getTrafficEdgeColor(packets, bytes);
+            const trafficColor = getTrafficEdgeColor(e);
             ctx.strokeStyle = trafficColor;
             
             // External edges always get traffic gradient in heatmap mode
@@ -213,7 +264,7 @@ function drawEdges() {
             ctx.globalAlpha = 0.28;
             
             if (enableHeatmap) {
-                ctx.strokeStyle = getTrafficEdgeColor(packets, bytes);
+                ctx.strokeStyle = getTrafficEdgeColor(e);
             } else {
                 ctx.strokeStyle = edgeColor(e.type);
             }
@@ -231,10 +282,9 @@ function drawEdges() {
         // traffic volume thickness - only apply heatmap width logic when enabled
         let width = 1;
 
-        
-        if (packets > 1500 || bytes > 4000000) {
-            const packetWidth = Math.log10(packets / 1200) * 2.5;
-            const byteWidth = Math.log10(bytes / 3500000) * 4.0;
+        if (packets > 500 || bytes > 500000) {
+            const packetWidth = Math.log10(packets / 500) * 8.5;
+            const byteWidth = Math.log10(bytes / 500000) * 12.0;
 
             width += Math.max(0, packetWidth) + Math.max(0, byteWidth);
         }
@@ -261,11 +311,11 @@ function drawEdges() {
         if (width >= 5 || presentation.glow) {
             // Only apply heatmap shadow when enabled
             if (enableHeatmap) {
-                ctx.shadowColor = getTrafficEdgeColor(packets, bytes);
+                ctx.shadowColor = getTrafficEdgeColor(e);
             } else {
                 ctx.shadowColor = edgeColor(e.type);
             }
-            ctx.shadowBlur = width * 1.5;
+            ctx.shadowBlur = width * 1.2;
         }
 
         if (isLogicalDirect) {
@@ -325,6 +375,8 @@ function drawEdges() {
                     "switch_to_gateway",
                     "gateway_to_switch",
                     "switch_to_local",
+                    "local_to_gateway",
+                    "gateway_to_local",
                     "dns_to_switch",
                     "dns_to_gateway"
                 ].includes(e.data?.visual_route);
@@ -487,6 +539,10 @@ function edgePresentation(e) {
             "switch_to_gateway",
             "gateway_to_switch",
             "switch_to_local",
+            "local_to_gateway",
+            "gateway_to_local",
+            "dns_to_switch",
+            "dns_to_gateway"
         ].includes(visualRoute);
 
         if (isBackbone) {
@@ -505,12 +561,13 @@ function getRadius(n) {
     const importance = Number(n.data?.importance || 0);
     const risk = Number(n.data?.risk || 0);
 
-    if (n.group === "local_anchor") return 22;
-    if (n.group === "external_anchor") return 22;
-    if (n.group === "multicast_anchor") return 22;
+    if (n.group === "local_anchor") return 26;
+    if (n.group === "external_anchor") return 26;
+    if (n.group === "ipv6_anchor") return 26;
+    if (n.group === "multicast_anchor") return 26;
     if (n.group === "gateway") return 18 + importance * 1.1;
     if (n.group === "suspicious") return 12 + importance * 1.1 + risk * 1.4;
     if (n.group === "switch") return 20 + importance * 0.7;
 
-    return 8 + importance * 1.15 + risk * 0.8;
+    return 6 + importance * 1.15 + risk * 0.8;
 }

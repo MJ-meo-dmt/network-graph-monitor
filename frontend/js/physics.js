@@ -57,9 +57,10 @@ function stepPhysics() {
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
             const externalPair = a.group === "external_host" || b.group === "external_host";
+            const ipv6Pair = isIPv6NodeId(a.id) || isIPv6NodeId(b.id);
 
-            const minDist = getRadius(a) + getRadius(b) + (externalPair ? 140 : 75);
-            const force = Math.min(4.0, (externalPair ? 3200 : 2200) / (dist * dist));
+            const minDist = getRadius(a) + getRadius(b) + (externalPair || ipv6Pair ? 140 : 75);
+            const force = Math.min(4.0, (externalPair || ipv6Pair ? 3200 : 2200) / (dist * dist));
 
             const fx = dx / dist * force;
             const fy = dy / dist * force;
@@ -118,6 +119,31 @@ function stepPhysics() {
             tx = 0;
             ty = 0;
             strength = 0.0025;
+        } else if (isIPv6NodeId(n.id)) {
+            const ipv6Anchor = nodeMap["__ipv6_anchor__"];
+
+            if (ipv6Anchor) {
+                const dx = n.x - ipv6Anchor.x;
+                const dy = n.y - ipv6Anchor.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+                const importance = Number(n.data?.importance || 0);
+                const orbit = 150 + (importance * 28) + (seededAngleFromId(n.id) % 110);
+                const ringForce = (dist - orbit) * 0.0023;
+
+                n.vx -= (dx / dist) * ringForce;
+                n.vy -= (dy / dist) * ringForce;
+
+                const tangentStrength = 0.008;
+                n.vx += (-dy / dist) * tangentStrength;
+                n.vy += (dx / dist) * tangentStrength;
+
+                continue;
+            } else {
+                tx = -120;
+                ty = -520;
+                strength = 0.0012;
+            }
         } else if (n.group === "local_device") {
             const localAnchor = nodeMap["__local_anchor__"];
 
