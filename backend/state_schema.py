@@ -19,6 +19,10 @@ def empty_state():
         "gateway_override": None,
         "l2_devices": {},
         "l2_links": {},
+        "ip_links": {
+            "mac_to_ips": {},
+            "ip_to_mac": {}
+        },
         "access_paths": {},
         "default_switch": None,
         "intelligence": {
@@ -40,6 +44,10 @@ def normalize_state(state):
 
     for key, value in base.items():
         state.setdefault(key, value)
+
+    state.setdefault("ip_links", {})
+    state["ip_links"].setdefault("mac_to_ips", {})
+    state["ip_links"].setdefault("ip_to_mac", {})
 
     state.setdefault("intelligence", {})
     state["intelligence"].setdefault("nodes", {})

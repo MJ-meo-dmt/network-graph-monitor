@@ -190,3 +190,33 @@ def clean_domain(domain):
         return None
 
     return domain
+
+def normalize_mac(mac):
+    if not mac:
+        return None
+
+    mac = str(mac).strip().lower().replace("-", ":")
+
+    if mac in {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"}:
+        return None
+
+    parts = mac.split(":")
+    if len(parts) != 6:
+        return None
+
+    try:
+        parts = [f"{int(p, 16):02x}" for p in parts]
+    except Exception:
+        return None
+
+    return ":".join(parts)
+
+
+def is_linkable_device_ip(ip):
+    group = classify_ip(ip)
+
+    return group in {
+        "local_device",
+        "gateway",
+        "loopback"
+    }
