@@ -7,7 +7,15 @@ import http.server
 import socketserver
 from urllib.parse import urlparse
 from config import APP_PORT, frontend_path
-from capture import start_capture, set_capture_enabled, get_capture_enabled
+from capture import (
+    start_capture,
+    pause_capture,
+    stop_capture,
+    get_capture_enabled,
+    get_capture_running,
+    capture_stats
+)
+
 from graph_builder import build_graph, load_state
 from session_manager import new_session, list_sessions, set_current_session
 
@@ -63,7 +71,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         
         if parsed.path == "/capture/status":
             self.json_response({
-                "capture": "running" if get_capture_enabled() else "paused"
+                "capture": "running" if get_capture_enabled() else "paused",
+                "sniffer": "running" if get_capture_running() else "stopped",
+                "stats": capture_stats
             })
             return
         
@@ -80,33 +90,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/capture/start":
-            set_capture_enabled(True)
-            self.json_response({"capture": "running"})
+            ok = start_capture()
+            self.json_response({
+                "ok": ok,
+                "capture": "running" if ok else "error",
+                "sniffer": "running" if get_capture_running() else "stopped"
+            })
             return
 
         if parsed.path == "/capture/pause":
-            set_capture_enabled(False)
-            self.json_response({"capture": "paused"})
+            pause_capture()
+            self.json_response({
+                "capture": "paused",
+                "sniffer": "running" if get_capture_running() else "stopped"
+            })
             return
 
         if parsed.path == "/capture/status":
             self.json_response({
-                "capture": "running" if get_capture_enabled() else "paused"
+                "capture": "running" if get_capture_enabled() else "paused",
+                "sniffer": "running" if get_capture_running() else "stopped",
+                "stats": capture_stats
             })
             return
 
         if parsed.path == "/capture/stop":
-            set_capture_enabled(False)
-            self.json_response({"capture": "stopped"})
+            stop_capture()
+            self.json_response({
+                "capture": "stopped",
+                "sniffer": "stopped"
+            })
             return
 
         if parsed.path == "/sessions/new":
-            set_capture_enabled(False)
+            stop_capture()
             session = new_session()
+            ok = start_capture()
+
             self.json_response({
                 "ok": True,
                 "session": session["filename"],
-                "capture": "paused"
+                "capture": "running" if ok else "error",
+                "sniffer": "running" if get_capture_running() else "stopped"
             })
             return
 
@@ -137,7 +162,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.json_response({"error": "filename required"}, status=400)
                 return
 
-            set_capture_enabled(False)
+            stop_capture()
             set_current_session(filename)
 
             self.json_response({
@@ -203,7 +228,4 @@ def run_server():
 
 
 if __name__ == "__main__":
-    capture_thread = threading.Thread(target=start_capture, daemon=True)
-    capture_thread.start()
-    
     run_server()
