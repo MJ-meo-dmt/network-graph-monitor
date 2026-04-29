@@ -15,7 +15,12 @@ async function fetchGraph() {
         }
 
         graph = newGraph;
+        const ipv6Toggle = document.getElementById("toggle-ipv6");
         const topologyKey = `${newGraph.stats.gateway || ""}|${newGraph.stats.default_switch || ""}`;
+
+        if (ipv6Toggle && newGraph.stats?.filters?.hasOwnProperty("show_ipv6")) {
+            ipv6Toggle.checked = Boolean(newGraph.stats.filters.show_ipv6);
+        }
 
         if (window.lastTopologyKey && window.lastTopologyKey !== topologyKey) {
             edgeCache = {};
@@ -169,7 +174,10 @@ async function refreshCaptureStatus() {
         const res = await fetch("/capture/status");
         const data = await res.json();
 
+        captureStats = data.stats || {};
+
         setCaptureStatusVisual(data.capture);
+        updateStatsPanel();
     } catch {
         setCaptureStatusVisual("unknown");
     }
