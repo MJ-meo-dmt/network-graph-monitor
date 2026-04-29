@@ -24,6 +24,8 @@ from net_utils import (
     add_unique_list_item,
     set_hostname,
     best_display_name,
+    normalize_mac,
+    is_linkable_device_ip,
 )
 
 from net_ports import (
@@ -37,6 +39,7 @@ from net_ports import (
     MOBILE_NAME_HINTS
 )
 from heuristics import run_heuristics
+from app_fingerprints import app_hints_for
 
 
 STATE_LOCK = threading.RLock()
@@ -50,6 +53,8 @@ INFRA_ROUTES = {
     "switch_to_gateway",
     "gateway_to_switch",
     "switch_to_local",
+    "local_to_gateway",
+    "gateway_to_local",
     "dns_to_switch",
     "dns_to_gateway",
 }
@@ -172,7 +177,25 @@ def detect_dns_servers(state):
     return list(servers)
 
 
+def track_ip_mac_link(state, ip, mac):
+    mac = normalize_mac(mac)
 
+    if not ip or not mac:
+        return
+
+    if not is_linkable_device_ip(ip):
+        return
+
+    links = state.setdefault("ip_links", {})
+    mac_to_ips = links.setdefault("mac_to_ips", {})
+    ip_to_mac = links.setdefault("ip_to_mac", {})
+
+    ips = mac_to_ips.setdefault(mac, [])
+
+    if ip not in ips:
+        ips.append(ip)
+
+    ip_to_mac[ip] = mac
 
 
 def detect_tunnels_and_proxies(state):
@@ -314,7 +337,8 @@ def make_segment_edge(src, dst, etype, e, route, actual_src=None, actual_dst=Non
         "bytes": bytes_count,
         "ports": data.get("ports", []),
         "domains": data.get("domains", []),
-        "protocols": data.get("protocols", {})
+        "protocols": data.get("protocols", {}),
+        "app_hints": data.get("app_hints", [])
     }]
 
     return {
@@ -379,6 +403,12 @@ def merge_visual_edges(edges):
             cur_data.setdefault("domains", [])
             if d not in cur_data["domains"]:
                 cur_data["domains"].append(d)
+        
+        for hint in data.get("app_hints", []) or []:
+            cur_data.setdefault("app_hints", [])
+
+            if hint not in cur_data["app_hints"]:
+                cur_data["app_hints"].append(hint)
 
         cur_data.setdefault("connections", [])
         cur_data["connections"].extend(data.get("connections", []))
@@ -492,6 +522,22 @@ def make_visual_edges(state, edges, gateway, dns_servers=None, switch_id=None):
 
                 visual.extend([s1, s2, b])
             else:
+                a = make_segment_edge(
+                    src, gateway, etype, e,
+                    "dns_to_gateway",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
+                b = make_segment_edge(
+                    gateway, dst, etype, e,
+                    "gateway_to_external_dns",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
                 visual.extend([a, b])
                 continue
 
@@ -544,6 +590,22 @@ def make_visual_edges(state, edges, gateway, dns_servers=None, switch_id=None):
 
                 visual.extend([s1, s2, b, logical])
             else:
+                a = make_segment_edge(
+                    src, gateway, etype, e,
+                    "local_to_gateway",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
+                b = make_segment_edge(
+                    gateway, dst, etype, e,
+                    "gateway_to_external",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
                 visual.extend([a, b, logical])
             continue
 
@@ -596,6 +658,22 @@ def make_visual_edges(state, edges, gateway, dns_servers=None, switch_id=None):
 
                 visual.extend([a, s1, s2, logical])
             else:
+                a = make_segment_edge(
+                    src, gateway, etype, e,
+                    "external_to_gateway",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
+                b = make_segment_edge(
+                    gateway, dst, etype, e,
+                    "gateway_to_local",
+                    actual_src=src,
+                    actual_dst=dst,
+                    weight_scale=0.6
+                )
+
                 visual.extend([a, b, logical])
 
             continue
@@ -976,6 +1054,7 @@ def update_state(event):
         bad_macs = {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"}
 
         mac_value = str(event.get(mac_key) or "").lower()
+        track_ip_mac_link(state, ip, mac_value)
 
         if (
             mac_value
@@ -1138,7 +1217,8 @@ def update_state(event):
             "last_seen": now,
             "domains": [],
             "dns_queries": [],
-            "tcp_flags": {}
+            "tcp_flags": {},
+            "app_hints": []
         }
 
     flow = state["flows"][key]
@@ -1157,6 +1237,9 @@ def update_state(event):
         else:
             if event["domain"] not in flow.setdefault("domains", []):
                 flow["domains"].append(event["domain"])
+
+    # APP hints
+    flow["app_hints"] = app_hints_for(state, flow)
 
     # -------------------------------------------------
     # Recent event ring buffer
@@ -1421,10 +1504,11 @@ def build_relationship_edges(state):
                 "packets": 0,
                 "bytes": 0,
                 "domains": [],
+                "app_hints": [],
                 "dns_queries": [],
                 "routing": [],
                 "first_seen": flow.get("first_seen"),
-                "last_seen": flow.get("last_seen")
+                "last_seen": flow.get("last_seen"),
             }
 
         rel = pairs[key]
@@ -1462,15 +1546,21 @@ def build_relationship_edges(state):
         for query in flow.get("dns_queries", []):
             if query not in rel["dns_queries"]:
                 rel["dns_queries"].append(query)
+        
+        for hint in flow.get("app_hints", []) or []:
+            if hint not in rel["app_hints"]:
+                rel["app_hints"].append(hint)
 
         if flow.get("last_seen"):
             rel["last_seen"] = max(float(rel.get("last_seen") or 0), float(flow.get("last_seen")))
-
+    
+    
     edges = []
 
     intelligence_edges = state.get("intelligence", {}).get("edges", {})
 
     for key, rel in pairs.items():
+        rel["app_hints"] = app_hints_for(state, rel)
         protocols = set(rel["protocols"].keys())
         primary_type = relationship_type(protocols)
 
@@ -1498,6 +1588,7 @@ def build_relationship_edges(state):
                 "packets": rel["packets"],
                 "bytes": rel["bytes"],
                 "domains": rel["domains"],
+                "app_hints": rel.get("app_hints", []),
                 "dns_queries": rel["dns_queries"],
                 "routing": rel["routing"],
                 "first_seen": rel["first_seen"],
@@ -1595,6 +1686,15 @@ def build_graph(state):
 
         identity = build_device_identity(ip, device, group, state)
 
+        mac = normalize_mac(device.get("mac"))
+        linked_ips = []
+
+        if mac:
+            linked_ips = state.get("ip_links", {}).get("mac_to_ips", {}).get(mac, []) or []
+
+        linked_ipv4 = sorted(ip for ip in linked_ips if not is_ipv6_address(ip))
+        linked_ipv6 = sorted(ip for ip in linked_ips if is_ipv6_address(ip))
+
         node_data = {
             "ip": ip,
             "identity": identity,
@@ -1609,6 +1709,10 @@ def build_graph(state):
             "access_path": get_access_path(state, ip),
 
             "mac": device.get("mac"),
+            "linked_ips": linked_ips,
+            "linked_ipv4": linked_ipv4,
+            "linked_ipv6": linked_ipv6,
+            "linked_mac": mac,
             "first_seen": device.get("first_seen"),
             "last_seen": device.get("last_seen"),
             "packets": device.get("packets", 0),
@@ -1757,5 +1861,6 @@ def build_graph(state):
             "l2_devices": len(state.get("l2_devices", {})),
             "vlans": sorted(vlans),
             "intelligence": state.get("intelligence", {}).get("summary", {}),
+            "filters": state.get("filters", {}),
         }
     }
