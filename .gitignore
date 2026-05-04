@@ -30,6 +30,7 @@ session_state_*.json
 current_session.txt
 *.tmp
 
+data/
 data/app_intel
 data/node_cache
 node_cache.json
