@@ -18,6 +18,7 @@ from capture import (
 
 from graph_builder import build_graph, load_state
 from session_manager import new_session, list_sessions, set_current_session
+from node_cache import refresh_node_cache_from_state, load_node_cache
 
 FRONTEND_DIR = frontend_path()
 
@@ -45,6 +46,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(raw)
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
             return
+
+    def read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                return {}
+
+            body = self.rfile.read(length).decode("utf-8")
+            return json.loads(body or "{}")
+        except Exception:
+            return {}
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -79,6 +91,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         
         if parsed.path == "/sessions":
             self.json_response(list_sessions())
+            return
+
+        if parsed.path == "/nodes/cache":
+            cache = load_node_cache()
+
+            self.json_response({
+                "ok": True,
+                "enabled": True,
+                "count": len(cache.get("nodes_by_ip", {})),
+                "updated_at": cache.get("updated_at"),
+                "cache": cache
+            })
             return
 
         if parsed.path == "/":
@@ -123,22 +147,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/sessions/new":
+            payload = self.read_json_body()
+
+            with_known_nodes = bool(payload.get("with_known_nodes", False))
+            auto_start_capture = bool(payload.get("start_capture", True))
+
             stop_capture()
-            session = new_session()
-            ok = start_capture()
+
+            session = new_session(with_known_nodes=with_known_nodes)
+
+            ok = False
+
+            if auto_start_capture:
+                ok = start_capture()
 
             self.json_response({
                 "ok": True,
                 "session": session["filename"],
-                "capture": "running" if ok else "error",
+                "with_known_nodes": session.get("with_known_nodes", False),
+                "known_nodes_loaded": session.get("known_nodes_loaded", 0),
+                "capture": "running" if ok else "paused",
                 "sniffer": "running" if get_capture_running() else "stopped"
             })
             return
 
         if parsed.path == "/gateway/set":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            payload = json.loads(body or "{}")
+            #length = int(self.headers.get("Content-Length", 0))
+            #body = self.rfile.read(length).decode("utf-8")
+            payload = self.read_json_body()
 
             ip = payload.get("ip")
 
@@ -153,9 +189,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/sessions/load":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            payload = json.loads(body or "{}")
+            #length = int(self.headers.get("Content-Length", 0))
+            #body = self.rfile.read(length).decode("utf-8")
+            payload = self.read_json_body()
 
             filename = payload.get("filename")
             if not filename:
@@ -173,9 +209,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         
         if parsed.path == "/filters/set":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            payload = json.loads(body or "{}")
+            #length = int(self.headers.get("Content-Length", 0))
+            #body = self.rfile.read(length).decode("utf-8")
+            payload = self.read_json_body()
 
             state = load_state()
 
@@ -189,9 +225,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         
         if parsed.path == "/access-path/set":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            payload = json.loads(body or "{}")
+            #length = int(self.headers.get("Content-Length", 0))
+            #body = self.rfile.read(length).decode("utf-8")
+            payload = self.read_json_body()
 
             ip = payload.get("ip")
             path_value = payload.get("path")
@@ -216,6 +252,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             save_state(state)
 
             self.json_response({"ok": True, "ip": ip, "path": path_value or None})
+            return
+        
+        if parsed.path == "/nodes/cache/refresh":
+            state = load_state()
+            result = refresh_node_cache_from_state(state)
+
+            self.json_response({
+                "ok": True,
+                "result": result
+            })
             return
 
         self.json_response({"error": "not found"}, status=404)

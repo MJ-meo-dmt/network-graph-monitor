@@ -94,18 +94,29 @@ async function clearGateway() {
 }
 
 async function newSession() {
-    await fetch("/sessions/new", { method: "POST" });
+    const withKnownNodes =
+        document.getElementById("start-with-known-nodes")?.checked ?? false;
+
+    await postJson("/sessions/new", {
+        with_known_nodes: withKnownNodes,
+        start_capture: true
+    });
 
     graph = { nodes: [], edges: [], stats: {} };
     nodeMap = {};
+    edgeCache = {};
+
     selectedNode = null;
     selectedEdge = null;
+    selectedEdgeKey = null;
+    selectedConnection = null;
 
     await refreshSessions();
     await fetchGraph();
     await fetchEvents();
     await refreshCaptureStatus();
 }
+``
 
 async function refreshSessions() {
     const res = await fetch("/sessions");
@@ -142,8 +153,12 @@ async function loadSelectedSession() {
 
     graph = { nodes: [], edges: [], stats: {} };
     nodeMap = {};
+    edgeCache = {};
+
     selectedNode = null;
     selectedEdge = null;
+    selectedEdgeKey = null;
+    selectedConnection = null;
 
     await refreshSessions();
     await fetchGraph();
@@ -180,5 +195,31 @@ async function refreshCaptureStatus() {
         updateStatsPanel();
     } catch {
         setCaptureStatusVisual("unknown");
+    }
+}
+
+async function postJson(url, payload = {}) {
+    const res = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        throw new Error(`${url} failed with HTTP ${res.status}`);
+    }
+
+    return await res.json();
+}
+
+async function refreshNodeCache() {
+    try {
+        await postJson("/nodes/cache/refresh");
+        console.log("Node cache refreshed");
+    } catch (err) {
+        console.error("Failed to refresh node cache", err);
+        alert("Failed to refresh")
     }
 }

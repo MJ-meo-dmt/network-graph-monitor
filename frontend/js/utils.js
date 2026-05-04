@@ -13,6 +13,63 @@ function logOnce(node, msg) {
     }  
 }
 
+function pointInRect(px, py, rect) {
+    if (!rect) return false;
+
+    return (
+        px >= rect.x &&
+        px <= rect.x + rect.w &&
+        py >= rect.y &&
+        py <= rect.y + rect.h
+    );
+}
+
+function getCanvasMousePos(evt) {
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+    };
+}
+
+function getNodeAtScreenPoint(screenX, screenY) {
+    // 1. Check label rectangles first
+    // Iterate backwards so visually later-drawn labels win if overlapping
+    const nodeList = Object.values(nodeMap);
+
+    for (let i = nodeList.length - 1; i >= 0; i--) {
+        const n = nodeList[i];
+
+        if (!nodeVisible(n)) continue;
+
+        if (pointInRect(screenX, screenY, n._labelBounds)) {
+            return n;
+        }
+    }
+
+    // 2. Check node circles
+    // Node circles are in world-space, so convert click to world-space
+    const worldX = (screenX - camera.x) / camera.zoom;
+    const worldY = (screenY - camera.y) / camera.zoom;
+
+    for (let i = nodeList.length - 1; i >= 0; i--) {
+        const n = nodeList[i];
+
+        if (!nodeVisible(n)) continue;
+
+        const radius = getRadius(n);
+        const dx = worldX - n.x;
+        const dy = worldY - n.y;
+
+        if (Math.sqrt(dx * dx + dy * dy) <= radius + 4) {
+            return n;
+        }
+    }
+
+    return null;
+}
+
 function lerp(a, b, t) {
     return a + (b - a) * t;
 }

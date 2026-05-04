@@ -275,6 +275,13 @@ function drawNodeLabelScreenSpace(n, radius) {
     const bgX = labelX - 7;
     const bgY = labelY - 15;
 
+    n._labelBounds = {
+        x: bgX,
+        y: bgY,
+        w: labelWidth,
+        h: labelHeight
+    };
+
     // Background
     ctx.globalAlpha = 1;
     ctx.fillStyle = isAnchor

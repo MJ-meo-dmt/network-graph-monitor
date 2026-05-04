@@ -30,6 +30,9 @@ function pickNodeAtWorld(x, y) {
 
     for (const id in nodeMap) {
         const n = nodeMap[id];
+
+        if (!nodeVisible(n)) continue;
+
         const dx = n.x - x;
         const dy = n.y - y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -342,14 +345,15 @@ canvas.addEventListener("mouseup", () => {
 canvas.addEventListener("click", e => {
     if (pointerMoved) return;
 
-    const p = screenToWorld(e.clientX, e.clientY);
+    const screenPos = getCanvasMousePos(e);
 
     selectedNode = null;
     selectedEdge = null;
     selectedEdgeKey = null;
     selectedConnection = null;
 
-    const node = pickNodeAtWorld(p.x, p.y);
+    // Check labels first, then node circles
+    const node = getNodeAtScreenPoint(screenPos.x, screenPos.y);
 
     if (node) {
         selectedNode = node;
@@ -358,6 +362,9 @@ canvas.addEventListener("click", e => {
         syncPinButton();
         return;
     }
+
+    // Edge picking still uses world-space coordinates
+    const p = screenToWorld(e.clientX, e.clientY);
 
     const edge = findNearestEdge(p.x, p.y);
 

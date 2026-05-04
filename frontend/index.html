@@ -39,6 +39,14 @@
             <button onclick="loadSelectedSession()">Load Session</button>
             <div id="session-status" class="muted">checking...</div>
         </div>
+        <div class="session-controls">
+            <label class="control-group">
+                <input id="start-with-known-nodes" type="checkbox">
+                <span>Start with known nodes</span>
+            </label>
+
+            <button onclick="refreshNodeCache()">Refresh node cache</button>
+        </div>
         <div class="resize-handle"></div>
     </div>
 

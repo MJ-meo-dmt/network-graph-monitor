@@ -3,7 +3,8 @@
 import json
 import os
 from datetime import datetime
-from config import SESSIONS_DIR, CURRENT_SESSION_PATH
+from config import SESSIONS_DIR, CURRENT_SESSION_PATH, START_SESSION_WITH_KNOWN_NODES_DEFAULT
+from node_cache import preload_known_nodes_into_state
 from state_schema import empty_state
 
 def ensure_sessions_dir():
@@ -25,7 +26,7 @@ def get_current_state_path():
         if name:
             return os.path.join(SESSIONS_DIR, name)
 
-    return new_session()["path"]
+    return new_session(with_known_nodes=False)["path"]
 
 
 def set_current_session(filename):
@@ -42,21 +43,31 @@ def set_current_session(filename):
     return path
 
 
-def new_session():
+def new_session(with_known_nodes=None):
     ensure_sessions_dir()
+
+    if with_known_nodes is None:
+        with_known_nodes = START_SESSION_WITH_KNOWN_NODES_DEFAULT
 
     filename = make_session_name()
     path = os.path.join(SESSIONS_DIR, filename)
 
+    state = empty_state()
+
+    if with_known_nodes:
+        preload_known_nodes_into_state(state)
+
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(empty_state(), f, indent=2)
+        json.dump(state, f, indent=2)
 
     with open(CURRENT_SESSION_PATH, "w", encoding="utf-8") as f:
         f.write(filename)
 
     return {
         "filename": filename,
-        "path": path
+        "path": path,
+        "with_known_nodes": bool(with_known_nodes),
+        "known_nodes_loaded": len(state.get("devices", {})) if with_known_nodes else 0
     }
 
 

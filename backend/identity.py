@@ -201,11 +201,22 @@ def guess_role(ip, device, group):
 
 
 def build_device_identity(ip, device, group, state):
-    hostname = clean_name(device.get("hostname") or state.get("hostnames", {}).get(ip))
-    dns_answer_name = clean_name(state.get("ip_name_map", {}).get(ip))
-    mac = device.get("mac")
+    known = device.get("known_node_cache", {}) or {}
 
-    vendor = guess_vendor(mac, load_oui_map())
+    hostname = clean_name(
+        device.get("hostname")
+        or state.get("hostnames", {}).get(ip)
+        or known.get("hostname")
+    )
+
+    dns_answer_name = clean_name(
+        state.get("ip_name_map", {}).get(ip)
+        or known.get("dns_answer_name")
+    )
+
+    mac = device.get("mac") or known.get("mac")
+
+    vendor = guess_vendor(mac, load_oui_map()) or known.get("vendor")
     switch_like = is_l2_switch_like(device, group)
 
     if group == "external_host":
@@ -222,7 +233,15 @@ def build_device_identity(ip, device, group, state):
         name = hostname or ip
 
     os_guess, os_confidence = guess_os(device)
+
+    if not os_guess and known.get("os"):
+        os_guess = known.get("os")
+        os_confidence = known.get("os_confidence") or 0.5
+
     role = guess_role(ip, device, group)
+
+    if role in {group, "Device", "LAN device"} and known.get("role"):
+        role = known.get("role")
 
     if switch_like:
         role = "Network switch"

@@ -24,6 +24,17 @@ ENABLE_APP_HINTING = False
 # Persistent local learning cache for app/domain/IP hints
 ENABLE_APP_INTEL_STORE = False
 
+NODE_CACHE_DIR = os.path.join(BASE_DIR, "data", "node_cache")
+NODE_CACHE_PATH = os.path.join(NODE_CACHE_DIR, "node_cache.json")
+
+# Persistent known-node cache
+ENABLE_NODE_CACHE = True
+
+# If enabled, new/empty sessions can pre-load previously known nodes
+START_SESSION_WITH_KNOWN_NODES_DEFAULT = False
+
+def node_cache_path():
+    return resource_path("data/node_cache/node_cache.json")
 
 
 def resource_path(relative_path):

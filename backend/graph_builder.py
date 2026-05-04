@@ -8,7 +8,7 @@ import threading
 import subprocess
 import re
 import uuid
-
+from config import ENABLE_APP_INTEL_STORE
 from state_schema import empty_state, normalize_state
 from session_manager import get_current_state_path
 from identity import build_device_identity
@@ -41,6 +41,11 @@ from net_ports import (
 from heuristics import run_heuristics
 from app_fingerprints import app_hints_for
 from app_intel_store import remember_dns_mapping, save_cache
+
+from node_cache import (
+    apply_cached_node_to_device,
+    remember_node_from_state,
+)
 
 
 STATE_LOCK = threading.RLock()
@@ -1032,6 +1037,7 @@ def update_state(event):
             }
 
         dev = state["devices"][ip]
+        apply_cached_node_to_device(state, ip, dev)
 
         if (
             classify_ip(ip) == "local_device"
@@ -1256,8 +1262,15 @@ def update_state(event):
     # -------------------------------------------------
     prune_old_flows(state, now)
 
+    for ip in [src, dst]:
+        device = state.get("devices", {}).get(ip)
+
+        if device:
+            remember_node_from_state(state, ip, device)
+
     save_state(state)
-    save_cache()
+    if ENABLE_APP_INTEL_STORE:
+        save_cache()
 
 
 def add_flag(device, flag):
