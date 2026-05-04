@@ -5,7 +5,8 @@ import os
 import time
 import uuid
 import threading
-from config import APP_INTEL_DIR, APP_INTEL_CACHE_PATH, APP_FINGERPRINT_OVERRIDES_PATH
+from config import APP_INTEL_DIR, APP_INTEL_CACHE_PATH, APP_FINGERPRINT_OVERRIDES_PATH, ENABLE_APP_INTEL_STORE
+
 
 LOCK = threading.RLock()
 CACHE = None
@@ -138,6 +139,9 @@ def remember_dns_mapping(ip, domain):
 
 
 def remember_app_hints(ip=None, domains=None, hints=None):
+    if not ENABLE_APP_INTEL_STORE:
+        return 
+        
     if not hints:
         return
 

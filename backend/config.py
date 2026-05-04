@@ -18,6 +18,13 @@ APP_INTEL_DIR = os.path.join(BASE_DIR, "data", "app_intel")
 APP_INTEL_CACHE_PATH = os.path.join(APP_INTEL_DIR, "app_intel_cache.json")
 APP_FINGERPRINT_OVERRIDES_PATH = os.path.join(APP_INTEL_DIR, "app_fingerprint_overrides.json")
 
+# Application fingerprinting / local intelligence
+ENABLE_APP_HINTING = False
+
+# Persistent local learning cache for app/domain/IP hints
+ENABLE_APP_INTEL_STORE = False
+
+
 
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):

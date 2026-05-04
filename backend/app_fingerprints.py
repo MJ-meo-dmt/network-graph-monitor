@@ -1,6 +1,8 @@
 # app_fingerprints.py
 import ipaddress
 
+from config import ENABLE_APP_HINTING, ENABLE_APP_INTEL_STORE
+
 from app_intel_store import (
     load_overrides,
     get_cached_domains_for_ip,
@@ -377,6 +379,9 @@ def collect_context_domains(state, flow_or_rel):
 
 
 def app_hints_for(state, flow_or_rel, limit=1):
+    if not ENABLE_APP_HINTING:
+        return []
+
     if not is_app_fingerprint_candidate(flow_or_rel):
         return []
 
@@ -494,7 +499,7 @@ def app_hints_for(state, flow_or_rel, limit=1):
 
     dominant = deduped[:limit]
 
-    if dominant and domains:
+    if ENABLE_APP_INTEL_STORE and dominant and domains:
         remember_app_hints(
             ip=flow_or_rel.get("to"),
             domains=domains,
