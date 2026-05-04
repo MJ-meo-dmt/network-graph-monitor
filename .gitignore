@@ -30,6 +30,12 @@ session_state_*.json
 current_session.txt
 *.tmp
 
+data/app_intel
+data/node_cache
+node_cache.json
+app_fingerprint_overrides.json
+app_intel_cache.json
+
 # Packet captures / exports
 *.pcap
 *.pcapng
