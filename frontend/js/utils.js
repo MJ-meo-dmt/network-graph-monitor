@@ -155,3 +155,7 @@ function seededPosition(id) {
         y: Math.sin(angle) * radius
     };
 }
+
+function orderedSectionLayoutEnabled() {
+    return document.getElementById("layout-ordered-sections")?.checked ?? false;
+}

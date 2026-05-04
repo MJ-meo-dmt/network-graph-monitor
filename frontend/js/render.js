@@ -227,7 +227,7 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
-function drawNodeLabelScreenSpace(n, radius) {
+function getNodeLabelBoundsScreenSpace(n, radius, labelScale = 1) {
     const identity = n.data?.identity || {};
 
     const line1 =
@@ -245,11 +245,7 @@ function drawNodeLabelScreenSpace(n, radius) {
     const text2 = short(line2);
 
     const pos = worldToScreen(n.x, n.y);
-
     const screenRadius = radius * camera.zoom;
-
-    const labelX = pos.x + screenRadius + 10;
-    const labelY = pos.y - 8;
 
     const isAnchor = [
         "external_anchor",
@@ -258,22 +254,74 @@ function drawNodeLabelScreenSpace(n, radius) {
         "multicast_anchor"
     ].includes(n.group);
 
+    const font1Size = Math.round((isAnchor ? 18 : 16) * labelScale);
+    const font2Size = Math.round(14 * labelScale);
+
+    const showLine2 = labelScale >= 0.62 || shouldForceShowLabel(n);
+
     ctx.save();
 
-    const font1 = isAnchor ? "bold 14px monospace" : "bold 12px monospace";
-    const font2 = "11px monospace";
-
-    ctx.font = font1;
+    ctx.font = `${isAnchor ? "bold " : "bold "}${font1Size}px monospace`;
     const w1 = ctx.measureText(text1).width;
 
-    ctx.font = font2;
-    const w2 = ctx.measureText(text2).width;
+    ctx.font = `${font2Size}px monospace`;
+    const w2 = showLine2 ? ctx.measureText(text2).width : 0;
 
-    const labelWidth = Math.max(w1, w2) + 16;
-    const labelHeight = 34;
+    ctx.restore();
 
-    const bgX = labelX - 7;
-    const bgY = labelY - 15;
+    const padX = Math.round(8 * labelScale);
+    const padY = Math.round(6 * labelScale);
+
+    const labelWidth = Math.max(w1, w2) + padX * 2;
+    const labelHeight = showLine2
+        ? Math.round(34 * labelScale)
+        : Math.round(22 * labelScale);
+
+    const labelX = pos.x + screenRadius + Math.round(10 * labelScale);
+    const labelY = pos.y - Math.round(8 * labelScale);
+
+    const bgX = labelX - padX;
+    const bgY = labelY - Math.round(15 * labelScale);
+
+    return {
+        x: bgX,
+        y: bgY,
+        w: labelWidth,
+        h: labelHeight,
+        labelX,
+        labelY,
+        text1,
+        text2,
+        showLine2,
+        font1Size,
+        font2Size,
+        isAnchor
+    };
+}
+
+
+function drawNodeLabelScreenSpace(n, radius, labelScale = 1, bounds = null) {
+    bounds = bounds || getNodeLabelBoundsScreenSpace(n, radius, labelScale);
+
+    if (!bounds) {
+        n._labelBounds = null;
+        return;
+    }
+
+    const {
+        x: bgX,
+        y: bgY,
+        w: labelWidth,
+        h: labelHeight,
+        labelX,
+        labelY,
+        text1,
+        text2,
+        showLine2,
+        font1Size,
+        font2Size,
+        isAnchor
+    } = bounds;
 
     n._labelBounds = {
         x: bgX,
@@ -282,16 +330,21 @@ function drawNodeLabelScreenSpace(n, radius) {
         h: labelHeight
     };
 
-    // Background
-    ctx.globalAlpha = 1;
+    ctx.save();
+
+    // Fade non-important labels slightly when zoomed out.
+    const forced = shouldForceShowLabel(n);
+    const alpha = forced ? 1 : clamp(camera.zoom * 1.4, 0.55, 1);
+
+    ctx.globalAlpha = alpha;
+
     ctx.fillStyle = isAnchor
         ? "rgba(15, 23, 42, 0.96)"
         : "rgba(2, 6, 23, 0.88)";
 
-    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, 7);
+    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, Math.max(4, 7 * labelScale));
     ctx.fill();
 
-    // Border
     ctx.strokeStyle = selectedNode === n
         ? "rgba(96, 165, 250, 0.95)"
         : isAnchor
@@ -299,18 +352,20 @@ function drawNodeLabelScreenSpace(n, radius) {
             : "rgba(148, 163, 184, 0.55)";
 
     ctx.lineWidth = selectedNode === n ? 2 : 1;
-    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, 7);
+    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, Math.max(4, 7 * labelScale));
     ctx.stroke();
 
-    // Text line 1
-    ctx.font = font1;
+    ctx.globalAlpha = 1;
+
+    ctx.font = `bold ${font1Size}px monospace`;
     ctx.fillStyle = isAnchor ? "#ffffff" : "#f8fafc";
     ctx.fillText(text1, labelX, labelY);
 
-    // Text line 2
-    ctx.font = font2;
-    ctx.fillStyle = "#cbd5e1";
-    ctx.fillText(text2, labelX, labelY + 13);
+    if (showLine2) {
+        ctx.font = `${font2Size}px monospace`;
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillText(text2, labelX, labelY + Math.round(13 * labelScale));
+    }
 
     ctx.restore();
 }
@@ -553,14 +608,96 @@ function worldToScreen(x, y) {
     };
 }
 
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function getNodeLabelScale() {
+    // Labels are screen-space, so manually scale them down as the graph zooms out.
+    // At zoom >= 1, labels are full size.
+    // At low zoom, labels shrink but do not become unreadable.
+    return clamp(camera.zoom, 0.65, 1.35);
+}
+
+function shouldForceShowLabel(n) {
+    return (
+        selectedNode === n ||
+        hoverNode === n ||
+        n.group === "external_anchor" ||
+        n.group === "local_anchor" ||
+        n.group === "ipv6_anchor" ||
+        n.group === "multicast_anchor"
+    );
+}
+
+function rectsOverlap(a, b, padding = 6) {
+    if (!a || !b) return false;
+
+    return !(
+        a.x + a.w + padding < b.x ||
+        b.x + b.w + padding < a.x ||
+        a.y + a.h + padding < b.y ||
+        b.y + b.h + padding < a.y
+    );
+}
+
+function labelPriority(n) {
+    if (selectedNode === n) return 10000;
+    if (hoverNode === n) return 9000;
+
+    if ([
+        "external_anchor",
+        "local_anchor",
+        "ipv6_anchor",
+        "multicast_anchor"
+    ].includes(n.group)) {
+        return 8000;
+    }
+
+    if (n.group === "gateway") return 7000;
+    if (n.group === "switch") return 6500;
+    if (n.group === "suspicious") return 6000;
+
+    const packets = Number(n.data?.packets || 0);
+    const bytes = Number(n.data?.bytes || 0);
+
+    return packets + (bytes / 1500);
+}
+
 function drawNodeLabelsOverlay() {
-    for (const id in nodeMap) {
-        const n = nodeMap[id];
+    const labelScale = getNodeLabelScale();
+    const drawnRects = [];
 
-        if (!nodeVisible(n)) continue;
+    const nodes = Object.values(nodeMap)
+        .filter(n => nodeVisible(n))
+        .sort((a, b) => labelPriority(b) - labelPriority(a));
 
+    for (const n of nodes) {
         const radius = getRadius(n);
-        drawNodeLabelScreenSpace(n, radius);
+
+        const bounds = getNodeLabelBoundsScreenSpace(n, radius, labelScale);
+
+        if (!bounds) {
+            n._labelBounds = null;
+            continue;
+        }
+
+        const forceShow = shouldForceShowLabel(n);
+
+        // When zoomed out, avoid drawing labels that collide.
+        const shouldCullOverlaps = camera.zoom < 0.55;
+
+        if (
+            shouldCullOverlaps &&
+            !forceShow &&
+            drawnRects.some(r => rectsOverlap(bounds, r, 8))
+        ) {
+            n._labelBounds = null;
+            continue;
+        }
+
+        drawNodeLabelScreenSpace(n, radius, labelScale, bounds);
+        drawnRects.push(bounds);
     }
 }
 
@@ -590,7 +727,7 @@ function edgePresentation(e) {
     const mode = getEdgeDisplayMode();
     const visualRoute = e.data?.visual_route || "";
     const packets = Number(e.data?.packets || 0);
-    const bytes = Number(e.data?.bytes || 0);
+    //const bytes = Number(e.data?.bytes || 0);
 
     let alpha = 1.5;
     let widthBoost = 0;

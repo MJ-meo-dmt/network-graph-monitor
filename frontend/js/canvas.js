@@ -271,8 +271,8 @@ canvas.addEventListener("wheel", e => {
 canvas.addEventListener("mousedown", e => {
     pointerMoved = false;
 
+    const screenPos = getCanvasMousePos(e);
     const p = screenToWorld(e.clientX, e.clientY);
-    const hit = pickNodeAtWorld(p.x, p.y);
 
     if (e.button === 2) {
         isPanning = true;
@@ -280,6 +280,9 @@ canvas.addEventListener("mousedown", e => {
         panStart.y = e.clientY - camera.y;
         return;
     }
+
+    // Allows dragging by node circle OR label rectangle.
+    const hit = getNodeAtScreenPoint(screenPos.x, screenPos.y);
 
     if (hit) {
         draggingNode = hit;

@@ -291,3 +291,26 @@ document.getElementById("toggle-ipv6").addEventListener("change", async (e) => {
 
     await fetchGraph(); // force immediate refresh
 });
+
+const orderedLayoutToggle = document.getElementById("layout-ordered-sections");
+
+if (orderedLayoutToggle) {
+    orderedLayoutToggle.checked =
+        localStorage.getItem("nm:layout:orderedSections") === "1";
+
+    orderedLayoutToggle.addEventListener("change", e => {
+        localStorage.setItem(
+            "nm:layout:orderedSections",
+            e.target.checked ? "1" : "0"
+        );
+
+        physicsPausedUntil = Date.now() + 50;
+
+        // Give the layout a moment to reorganize.
+        setTimeout(() => {
+            if (e.target.checked) {
+                fitGraph();
+            }
+        }, 450);
+    });
+}

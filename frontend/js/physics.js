@@ -1,9 +1,279 @@
 // physics.js
 
+function nodeUsageScore(n) {
+    const packets = Number(n.data?.packets || 0);
+    const bytes = Number(n.data?.bytes || 0);
+
+    return packets + (bytes / 1500);
+}
+
+function sectionOrigin(sectionDef) {
+    if (sectionDef.anchorId && nodeMap[sectionDef.anchorId]) {
+        const anchor = nodeMap[sectionDef.anchorId];
+
+        return {
+            x: anchor.x,
+            y: anchor.y
+        };
+    }
+
+    return {
+        x: sectionDef.fallbackX || 0,
+        y: sectionDef.fallbackY || 0
+    };
+}
+
+function orderedSectionForNode(n) {
+    if (!n || n.virtual) return null;
+
+    if (n.group === "gateway" || n.group === "switch" || n.group === "local_device") {
+        return "local";
+    }
+
+    if (n.group === "external_host") {
+        return "external";
+    }
+
+    if (isIPv6NodeId(n.id)) {
+        return "ipv6";
+    }
+
+    if (n.group === "broadcast" || n.group === "multicast") {
+        return "multicast";
+    }
+
+    if (n.group === "suspicious") {
+        return "suspicious";
+    }
+
+    return "local";
+}
+
+function sectionAnchorTargets() {
+    return {
+        local: {
+            anchorId: "__local_anchor__",
+            label: "Local",
+
+            // Used only if anchor does not exist yet
+            fallbackX: -980,
+            fallbackY: -360,
+
+            // List starts relative to anchor
+            listOffsetX: 0,
+            listOffsetY: 110,
+
+            rowGap: 78,
+            colGap: 720,
+            maxRows: 30
+        },
+
+        external: {
+            anchorId: "__external_anchor__",
+            label: "External",
+
+            fallbackX: 820,
+            fallbackY: -360,
+
+            listOffsetX: 0,
+            listOffsetY: 110,
+
+            rowGap: 78,
+            colGap: 320,
+            maxRows: 14
+        },
+
+        ipv6: {
+            anchorId: "__ipv6_anchor__",
+            label: "IPv6",
+
+            fallbackX: -520,
+            fallbackY: 460,
+
+            listOffsetX: 0,
+            listOffsetY: 110,
+
+            rowGap: 78,
+            colGap: 720,
+            maxRows: 10
+        },
+
+        multicast: {
+            anchorId: "__multicast_anchor__",
+            label: "Multicast",
+
+            fallbackX: 420,
+            fallbackY: 460,
+
+            listOffsetX: 0,
+            listOffsetY: 110,
+
+            rowGap: 78,
+            colGap: 720,
+            maxRows: 10
+        },
+
+        suspicious: {
+            anchorId: null,
+            label: "Suspicious",
+
+            fallbackX: 0,
+            fallbackY: -620,
+
+            listOffsetX: 0,
+            listOffsetY: 90,
+
+            rowGap: 82,
+            colGap: 780,
+            maxRows: 8
+        }
+    };
+}
+
+function sortedOrderedSections(nodes) {
+    const sections = {
+        local: [],
+        external: [],
+        ipv6: [],
+        multicast: [],
+        suspicious: []
+    };
+
+    for (const n of nodes) {
+        if (!nodeVisible(n)) continue;
+        if (n.virtual) continue;
+
+        // Pinned child nodes stay where manually placed and do not take a list slot.
+        if (n.pinned) continue;
+
+        const section = orderedSectionForNode(n);
+
+        if (!section || !sections[section]) continue;
+
+        sections[section].push(n);
+    }
+
+    for (const key of Object.keys(sections)) {
+        sections[key].sort((a, b) => {
+            const trafficDiff = nodeUsageScore(b) - nodeUsageScore(a);
+
+            if (trafficDiff !== 0) {
+                return trafficDiff;
+            }
+
+            return String(a.label || a.id).localeCompare(String(b.label || b.id));
+        });
+    }
+
+    return sections;
+}
+
+function orderedTargetForIndex(sectionDef, index) {
+    const origin = sectionOrigin(sectionDef);
+
+    const row = index % sectionDef.maxRows;
+    const col = Math.floor(index / sectionDef.maxRows);
+
+    return {
+        x: origin.x + sectionDef.listOffsetX + (col * sectionDef.colGap),
+        y: origin.y + sectionDef.listOffsetY + (row * sectionDef.rowGap)
+    };
+}
+
+function pullNodeToward(n, tx, ty, strength = 0.055) {
+    const dx = tx - n.x;
+    const dy = ty - n.y;
+
+    n.vx += dx * strength;
+    n.vy += dy * strength;
+}
+
+function stepOrderedSectionLayout(nodes) {
+    const defs = sectionAnchorTargets();
+    const sections = sortedOrderedSections(nodes);
+
+    // Pull unpinned nodes into ordered slots relative to their section anchor.
+    for (const [sectionName, list] of Object.entries(sections)) {
+        const def = defs[sectionName];
+
+        if (!def) continue;
+
+        for (let i = 0; i < list.length; i++) {
+            const n = list[i];
+
+            if (draggingNode === n) continue;
+            if (n.pinned) continue;
+
+            const target = orderedTargetForIndex(def, i);
+
+            n._orderedTarget = target;
+
+            pullNodeToward(n, target.x, target.y, 0.045);
+        }
+    }
+
+    // Light repulsion.
+    // Pinned nodes do not move, but unpinned nodes can still be pushed away from them.
+    for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+            const a = nodes[i];
+            const b = nodes[j];
+
+            if (!nodeVisible(a) || !nodeVisible(b)) continue;
+            if (a.virtual || b.virtual) continue;
+
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const minDist = getRadius(a) + getRadius(b) + 42;
+
+            if (dist < minDist) {
+                const push = (minDist - dist) * 0.022;
+                const fx = dx / dist * push;
+                const fy = dy / dist * push;
+
+                if (!a.pinned && draggingNode !== a) {
+                    a.vx += fx;
+                    a.vy += fy;
+                }
+
+                if (!b.pinned && draggingNode !== b) {
+                    b.vx -= fx;
+                    b.vy -= fy;
+                }
+            }
+        }
+    }
+
+    // Integrate ordered layout movement.
+    // Pinned child nodes stay fixed.
+    for (const n of nodes) {
+        if (n.virtual || n.pinned || draggingNode === n) {
+            n.vx = 0;
+            n.vy = 0;
+            continue;
+        }
+
+        n.x += n.vx;
+        n.y += n.vy;
+
+        n.vx *= 0.70;
+        n.vy *= 0.70;
+
+        n.pulse = Math.max(0, (n.pulse || 0) * 0.92);
+    }
+}
+
 function stepPhysics() {
     if (Date.now() < physicsPausedUntil) return;
 
     const nodes = Object.values(nodeMap);
+
+    if (orderedSectionLayoutEnabled()) {
+        stepOrderedSectionLayout(nodes);
+        return;
+    }
 
     // edge springs
     for (const e of getVisibleEdges()) {
