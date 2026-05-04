@@ -173,6 +173,11 @@ function draw() {
     drawEdges();
     drawNodes();
 
+    //requestAnimationFrame(draw);
+    // Draw label in screenspace after nodes
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    drawNodeLabelsOverlay();
+
     requestAnimationFrame(draw);
 }
 
@@ -202,6 +207,103 @@ function drawArrowHead(x, y, angle, size, color, alpha = 1) {
     ctx.lineTo(-size, size * 0.55);
     ctx.closePath();
     ctx.fill();
+
+    ctx.restore();
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r) {
+    const radius = Math.min(r, w / 2, h / 2);
+
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+}
+
+function drawNodeLabelScreenSpace(n, radius) {
+    const identity = n.data?.identity || {};
+
+    const line1 =
+        identity.label_line_1 ||
+        n.data?.display_name ||
+        n.label ||
+        n.id;
+
+    const line2 =
+        identity.label_line_2 ||
+        n.data?.ip ||
+        n.id;
+
+    const text1 = short(line1);
+    const text2 = short(line2);
+
+    const pos = worldToScreen(n.x, n.y);
+
+    const screenRadius = radius * camera.zoom;
+
+    const labelX = pos.x + screenRadius + 10;
+    const labelY = pos.y - 8;
+
+    const isAnchor = [
+        "external_anchor",
+        "local_anchor",
+        "ipv6_anchor",
+        "multicast_anchor"
+    ].includes(n.group);
+
+    ctx.save();
+
+    const font1 = isAnchor ? "bold 14px monospace" : "bold 12px monospace";
+    const font2 = "11px monospace";
+
+    ctx.font = font1;
+    const w1 = ctx.measureText(text1).width;
+
+    ctx.font = font2;
+    const w2 = ctx.measureText(text2).width;
+
+    const labelWidth = Math.max(w1, w2) + 16;
+    const labelHeight = 34;
+
+    const bgX = labelX - 7;
+    const bgY = labelY - 15;
+
+    // Background
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = isAnchor
+        ? "rgba(15, 23, 42, 0.96)"
+        : "rgba(2, 6, 23, 0.88)";
+
+    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, 7);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = selectedNode === n
+        ? "rgba(96, 165, 250, 0.95)"
+        : isAnchor
+            ? "rgba(226, 232, 240, 0.75)"
+            : "rgba(148, 163, 184, 0.55)";
+
+    ctx.lineWidth = selectedNode === n ? 2 : 1;
+    drawRoundedRect(ctx, bgX, bgY, labelWidth, labelHeight, 7);
+    ctx.stroke();
+
+    // Text line 1
+    ctx.font = font1;
+    ctx.fillStyle = isAnchor ? "#ffffff" : "#f8fafc";
+    ctx.fillText(text1, labelX, labelY);
+
+    // Text line 2
+    ctx.font = font2;
+    ctx.fillStyle = "#cbd5e1";
+    ctx.fillText(text2, labelX, labelY + 13);
 
     ctx.restore();
 }
@@ -433,30 +535,28 @@ function drawNodes() {
             ctx.stroke();
         }
 
-        const identity = n.data?.identity || {};
-
-        const line1 =
-            identity.label_line_1 ||
-            n.data?.display_name ||
-            n.label ||
-            n.id;
-
-        const line2 =
-            identity.label_line_2 ||
-            n.data?.ip ||
-            n.id;
-
-        // Line 1 (main identity)
-        ctx.font = "11px monospace";
-        ctx.fillStyle = "#e5e7eb";
-        ctx.fillText(short(line1), n.x + radius + 7, n.y + 4);
-        
-        // Line 2 (IP)
-        ctx.font = "10px monospace";
-        ctx.fillStyle = "#94a3b8";
-        ctx.fillText(short(line2), n.x + radius + 7, n.y + 16);
+        //drawNodeLabel(n, radius);
     }
 }
+
+function worldToScreen(x, y) {
+    return {
+        x: x * camera.zoom + camera.x,
+        y: y * camera.zoom + camera.y
+    };
+}
+
+function drawNodeLabelsOverlay() {
+    for (const id in nodeMap) {
+        const n = nodeMap[id];
+
+        if (!nodeVisible(n)) continue;
+
+        const radius = getRadius(n);
+        drawNodeLabelScreenSpace(n, radius);
+    }
+}
+
 
 function getEdgeDisplayMode() {
     return document.getElementById("edge-display-mode")?.value || "normal";

@@ -40,6 +40,7 @@ from net_ports import (
 )
 from heuristics import run_heuristics
 from app_fingerprints import app_hints_for
+from app_intel_store import remember_dns_mapping, save_cache
 
 
 STATE_LOCK = threading.RLock()
@@ -1181,6 +1182,7 @@ def update_state(event):
             ipaddress.ip_address(value)
             add_unique_list_item(state.setdefault("dns_names", {}), value, name, limit=100)
             state.setdefault("ip_name_map", {})[value] = name
+            remember_dns_mapping(value, name)
         except Exception:
             pass
 
@@ -1255,6 +1257,7 @@ def update_state(event):
     prune_old_flows(state, now)
 
     save_state(state)
+    save_cache()
 
 
 def add_flag(device, flag):
@@ -1553,7 +1556,6 @@ def build_relationship_edges(state):
 
         if flow.get("last_seen"):
             rel["last_seen"] = max(float(rel.get("last_seen") or 0), float(flow.get("last_seen")))
-    
     
     edges = []
 
